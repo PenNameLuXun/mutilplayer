@@ -2,8 +2,8 @@ import math
 import av
 
 from PySide6.QtWidgets import QWidget, QGridLayout
-from .video_player import VideoPlayer
 import subprocess
+from .video_player import VideoPlayer
 
 # ------------------------------------------------------------
 # 工具函数：读取视频分辨率
@@ -35,16 +35,17 @@ def classify_videos(video_infos):
 
     return portrait, landscape, square
 def probe_resolution(path):
-    """使用 ffprobe 获取视频分辨率"""
-    cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "csv=p=0",
-        path
-    ]
-    out = subprocess.check_output(cmd).decode().strip()
-    w, h = out.split(",")
+    # """使用 ffprobe 获取视频分辨率"""
+    # cmd = [
+    #     "ffprobe", "-v", "error",
+    #     "-select_streams", "v:0",
+    #     "-show_entries", "stream=width,height",
+    #     "-of", "csv=p=0",
+    #     path
+    # ]
+    # out = subprocess.check_output(cmd).decode().strip()
+    # w, h = out.split(",")
+    return get_video_size(path)
     return int(w), int(h)
 
 class ScreenPlayer(QWidget):
