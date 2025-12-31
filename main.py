@@ -8,7 +8,7 @@ from player.screen_player import ScreenPlayer
 
 def main():
     # 1. 加载配置
-    with open("config.json", "r") as f:
+    with open("config.json", "r",encoding="utf-8") as f:
         cfg = json.load(f)
 
     app = QApplication(sys.argv)

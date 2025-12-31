@@ -29,6 +29,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
 
         self._frame = None
         self._lock = threading.Lock()
+
+        self.decoder_lock = threading.Lock() # 专门用于保护 decoder 的锁
         
         self.video_width = 0
         self.video_height = 0
@@ -36,7 +38,7 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self._initialized = False 
 
         # 1. 核心缓冲区：存放解码好的帧 (frame, pts)
-        self.frame_queue = queue.Queue(maxsize=5) 
+        self.frame_queue = queue.Queue(maxsize=50) 
         self.running = True
         self.paused = False
         
@@ -94,7 +96,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 continue
                 
             # 2. 读取帧
-            frame, pts = self.decoder.read_frame()
+            with self._lock:
+                frame, pts = self.decoder.read_frame()
             
             if frame is not None:
                 # 3. 关键防御：如果读到的帧 PTS 明显早于当前目标区间（seek 误差产生）
@@ -186,7 +189,6 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
             self.decoder.seek(seconds)
             self.start_time = time.perf_counter() - seconds
             self._current_pts = seconds
-            # 强制更新一次当前 PTS，防止 next_time 立即再次触发
 
 
     def current_second(self):
