@@ -1,30 +1,58 @@
 import sys
 import json
 import signal
+import argparse  # 导入参数解析模块
+import os
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 from screeninfo import get_monitors
 from player.screen_player import ScreenPlayer
 
 def main():
-    # 1. 加载配置
-    with open("config.json", "r",encoding="utf-8") as f:
-        cfg = json.load(f)
+    # 1. 解析命令行参数
+    parser = argparse.ArgumentParser(description="Multi-screen Video Player")
+    parser.add_argument(
+        "-f", "--file", 
+        type=str, 
+        default="config.json", 
+        help="Path to the configuration JSON file (default: config.json)"
+    )
+    args = parser.parse_args()
 
+    # 2. 加载配置
+    config_path = args.file
+    if not os.path.exists(config_path):
+        print(f"[ERROR] Configuration file not found: {config_path}")
+        return
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] Failed to parse JSON: {e}")
+        return
+    except Exception as e:
+        print(f"[ERROR] Unexpected error loading config: {e}")
+        return
+
+    # 3. 初始化 Qt 环境
     app = QApplication(sys.argv)
 
-    # 2. 处理 Ctrl+C 的关键：将信号重新映射给 Qt 的 quit 槽
-    # 这样按下 Ctrl+C 时，app.exec() 会安全返回，并触发 closeEvent
+    # 处理 Ctrl+C
     signal.signal(signal.SIGINT, lambda *args: app.quit())
 
-    # 3. 使用定时器让 Python 解释器有机会处理信号
-    # Qt 的主循环有时会完全阻塞 Python 信号处理，加个定时器能确保信号被捕获
+    # 定时器确保 Python 能捕获信号
     timer = QTimer()
     timer.start(500) 
     timer.timeout.connect(lambda: None) 
 
     monitors = get_monitors()
     players = []
+
+    # 4. 根据配置启动播放器
+    if "screens" not in cfg:
+        print("[ERROR] No 'screens' defined in config.")
+        return
 
     for sid, files in cfg["screens"].items():
         idx = int(sid)
@@ -36,10 +64,10 @@ def main():
         player.show()
         players.append(player)
 
-    # 4. 运行并确保退出时清理
+    # 5. 运行并清理
     exit_code = app.exec()
     
-    # 显式停止所有线程（如果 closeEvent 没能覆盖到）
+    print("Shutting down players...")
     for p in players:
         if hasattr(p, 'stop'):
             p.stop()
