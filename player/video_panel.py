@@ -18,10 +18,12 @@ except ImportError:
 from .video_decoder import VideoDecoder
 
 class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
-    def __init__(self, path, hwaccel, parent=None):
+    def __init__(self, path, config,hwaccel, parent=None):
         super().__init__(parent)
         QOpenGLExtraFunctions.__init__(self)
 
+        self.cfg = config
+        print("self.cfg:",self.cfg,hasattr(self.cfg,"play_sections"))
         self.decoder = VideoDecoder(path, hwaccel)
         self.paused = False
 
@@ -56,22 +58,72 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self.vbo = None
         self.ebo = None
 
+    # def _decode_loop(self):
+    #     """ 生产者：不停解码存入队列 """
+    #     while self.running:
+    #         if self.paused or self.frame_queue.full():
+    #             time.sleep(0.01)
+    #             continue
+
+    #         next_t = self.next_time()
+            
+    #         if next_t != -1:
+    #             self.seek_to(next_t)
+                
+    #         frame, pts = self.decoder.read_frame()
+    #         if frame is not None:
+    #             self.frame_queue.put((frame, pts))
+    #         else:
+    #             # 播放结束重置
+    #             self.seek_to(0)
+
+    #             #直接停止播放
+    #             #self.pause()
+
     def _decode_loop(self):
-        """ 生产者：不停解码存入队列 """
         while self.running:
             if self.paused or self.frame_queue.full():
-                time.sleep(0.01)
+                time.sleep(0.005)
+                continue
+
+            # 1. 检查是否需要跳转到下一个区间
+            jump_target = self.next_time()
+            if jump_target != -1:
+                self.seek_to(jump_target)
+                # 跳转后立即继续循环，确保逻辑重新判定
                 continue
                 
+            # 2. 读取帧
             frame, pts = self.decoder.read_frame()
+            
             if frame is not None:
+                # 3. 关键防御：如果读到的帧 PTS 明显早于当前目标区间（seek 误差产生）
+                # 我们需要找到当前应该处于的 start_time
+                target_start = self.get_current_section_start(pts)
+                if pts < target_start - 0.1:
+                    continue # 丢弃该帧，继续读下一帧
+
                 self.frame_queue.put((frame, pts))
             else:
-                # 播放结束重置
-                self.seek_to(0)
+                # 视频结束：安全地回到最初的起点
+                sections = self.cfg.get("play_sections", [])
+                if sections and len(sections) > 0:
+                    # 获取第一个区间的 start_time，如果没有则默认为 0
+                    first_start = sections[0].get("start_time", 0)
+                    self.seek_to(first_start)
+                else:
+                    # 如果根本没有 play_sections，就回到视频最开始
+                    self.seek_to(0)
 
-                #直接停止播放
-                #self.pause()
+    def get_current_section_start(self, pts):
+        """辅助函数：找到给定 PTS 应该对应的区间起点"""
+        for sec in self.cfg.get("play_sections", []):
+            start = float(sec["start_time"])
+            duration = float(sec["duration"])
+            end = start + duration if duration != -1 else float('inf')
+            if pts <= end + 0.1:
+                return start
+        return 0.0
 
     def _render_loop(self):
         """ 消费者：根据 PTS 同步时钟 """
@@ -112,22 +164,69 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
             except IndexError:
                 # 队列空了，等解码
                 time.sleep(0.01)
+    # def seek_to(self, seconds):
+    #     """外部跳转调用"""
+    #     # 1. 停止当前渲染逻辑的判断
+    #     with self._lock:
+    #         # 2. 清空队列，防止播放跳转前的旧帧
+    #         while not self.frame_queue.empty():
+    #             try: self.frame_queue.get_nowait()
+    #             except: break
+            
+    #         # 3. 解码器跳转
+    #         self.decoder.seek(seconds)
+            
+    #         # 4. 重置时钟：关键！让 elapsed 重新对齐
+    #         self.start_time = time.perf_counter() - seconds
+    #         self._current_pts = seconds
     def seek_to(self, seconds):
-        """外部跳转调用"""
-        # 1. 停止当前渲染逻辑的判断
         with self._lock:
-            # 2. 清空队列，防止播放跳转前的旧帧
             while not self.frame_queue.empty():
-                try: self.frame_queue.get_nowait()
-                except: break
-            
-            # 3. 解码器跳转
+                self.frame_queue.get_nowait()
             self.decoder.seek(seconds)
-            
-            # 4. 重置时钟：关键！让 elapsed 重新对齐
             self.start_time = time.perf_counter() - seconds
             self._current_pts = seconds
+            # 强制更新一次当前 PTS，防止 next_time 立即再次触发
 
+
+    def current_second(self):
+        # 单位：秒)
+        return int(self._current_pts)
+    def current_ms(self):
+        # 更新进度条 (单位：毫秒)
+        return int(self._current_pts * 1000)
+    
+    def next_time(self):
+        if "play_sections" not in self.cfg or not self.cfg["play_sections"]:
+            return -1
+        
+        # 使用真实的浮点 PTS，增加 0.1s 的容差
+        curr_pts = self._current_pts 
+        sections = self.cfg["play_sections"]
+        
+        for i, one_section in enumerate(sections):
+            start = float(one_section["start_time"])
+            duration = float(one_section["duration"])
+            # 计算结束时间
+            if duration == -1:
+                end = float(self.decoder.duration)
+            else:
+                end = start + duration
+
+            # 逻辑 1：如果你还没到这个区间的开始点（且不在之前的区间内）
+            if curr_pts < start - 0.1:
+                return start
+            
+            # 逻辑 2：如果你正处于这个区间内，正常播放
+            if start - 0.1 <= curr_pts <= end + 0.1:
+                return -1
+            
+            # 逻辑 3：如果你已经超过了这个区间，循环会进入下一个 i 检查下一个区间
+        
+        # 逻辑 4：如果你超过了所有区间，回到第一个区间
+        return float(sections[0]["start_time"])
+                    
+    
     def play(self):
         self.paused = False
         #self.running=True

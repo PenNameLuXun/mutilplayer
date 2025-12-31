@@ -69,13 +69,16 @@ class ScreenPlayer(QWidget):
 
         # 读取所有视频分辨率
         video_infos = []
-        for path in videos:
+        for video in videos:
+            print("video:",video)
+            path = video["path"]
             vw, vh = probe_resolution(path)
             video_infos.append({
                 "path": path,
                 "w": vw,
                 "h": vh,
-                "ar": vw / vh
+                "ar": vw / vh,
+                "config":video
             })
 
         n = len(video_infos)
@@ -116,7 +119,7 @@ class ScreenPlayer(QWidget):
         for i, info in enumerate(video_infos):
             r = i // cols
             c = i % cols
-            panel = VideoPlayer(info["path"], hwaccel)
+            panel = VideoPlayer(info["path"],info["config"], hwaccel)
             layout.addWidget(panel, r, c)
             self.panels.append(panel)
 

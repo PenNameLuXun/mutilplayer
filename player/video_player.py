@@ -9,14 +9,14 @@ from .video_panel import VideoPanel  # 确保路径正确
 # 这里通过一个包装类将它们组合起来
 
 class VideoPlayer(QWidget):
-    def __init__(self, path, hwaccel=None):
+    def __init__(self, path, config,hwaccel=None):
         super().__init__()
         #self.setWindowTitle("Gemini Video Player")
         #self.resize(1000, 700)
 
         # 1. 初始化渲染组件
         
-        self.video_panel = VideoPanel(path, hwaccel)
+        self.video_panel = VideoPanel(path, config,hwaccel)
         
         # 获取视频总时长 (用于进度条最大值)
         self.duration = float(self.video_panel.decoder.duration)
