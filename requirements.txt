@@ -2,3 +2,5 @@ PySide6
 av
 numpy
 screeninfo
+PyOpenGL 
+PyOpenGL_accelerate

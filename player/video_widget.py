@@ -13,6 +13,8 @@ class VideoWidget(QLabel):
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30)
 
+        self.setAlignment(Qt.AlignCenter)
+
     def update_frame(self):
         if self.paused:
             return
