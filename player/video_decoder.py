@@ -40,23 +40,5 @@ class VideoDecoder:
         container = av.open(path)
         stream = container.streams.video[0]
         return stream.width, stream.height
-    
-    # def classify_videos(video_infos):
-    #     portrait = []
-    #     landscape = []
-    #     square = []
-
-    #     for info in video_infos:
-    #         w, h = info["width"], info["height"]
-    #         ratio = w / h
-
-    #         if ratio < 0.8:
-    #             portrait.append(info)
-    #         elif ratio > 1.25:
-    #             landscape.append(info)
-    #         else:
-    #             square.append(info)
-
-    #     return portrait, landscape, square
 
 
