@@ -2,7 +2,7 @@ import math
 import av
 
 from PySide6.QtWidgets import QWidget, QGridLayout
-from .video_panel import VideoPanel
+from .video_player import VideoPlayer
 import subprocess
 
 # ------------------------------------------------------------
@@ -111,5 +111,5 @@ class ScreenPlayer(QWidget):
         for i, info in enumerate(video_infos):
             r = i // cols
             c = i % cols
-            panel = VideoPanel(info["path"], hwaccel,self)
+            panel = VideoPlayer(info["path"], hwaccel)
             layout.addWidget(panel, r, c)

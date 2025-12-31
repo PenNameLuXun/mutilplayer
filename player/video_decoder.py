@@ -15,6 +15,12 @@ class VideoDecoder:
         self.duration = self.stream.duration * self.time_base
 
         self.frame_iter = self.container.decode(self.stream)
+        # 获取平均帧率 (fps)
+        fps = self.stream.average_rate
+        if fps is None or fps == 0:
+            self.frame_interval = 33 # 默认 30fps
+        else:
+            self.frame_interval = int(1000 / float(fps)) # 计算每帧间隔毫秒数
 
     def read_frame(self):
         try:
@@ -35,22 +41,22 @@ class VideoDecoder:
         stream = container.streams.video[0]
         return stream.width, stream.height
     
-    def classify_videos(video_infos):
-        portrait = []
-        landscape = []
-        square = []
+    # def classify_videos(video_infos):
+    #     portrait = []
+    #     landscape = []
+    #     square = []
 
-        for info in video_infos:
-            w, h = info["width"], info["height"]
-            ratio = w / h
+    #     for info in video_infos:
+    #         w, h = info["width"], info["height"]
+    #         ratio = w / h
 
-            if ratio < 0.8:
-                portrait.append(info)
-            elif ratio > 1.25:
-                landscape.append(info)
-            else:
-                square.append(info)
+    #         if ratio < 0.8:
+    #             portrait.append(info)
+    #         elif ratio > 1.25:
+    #             landscape.append(info)
+    #         else:
+    #             square.append(info)
 
-        return portrait, landscape, square
+    #     return portrait, landscape, square
 
 

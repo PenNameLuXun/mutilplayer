@@ -2,6 +2,7 @@ import os
 import threading
 import ctypes
 import numpy as np
+import time,queue
 
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtGui import QOpenGLContext, QOpenGLExtraFunctions
@@ -32,30 +33,108 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self._texture_id = None
         self._initialized = False 
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._grab_frame)
-        self.timer.start(30)
+        # 1. 核心缓冲区：存放解码好的帧 (frame, pts)
+        self.frame_queue = queue.Queue(maxsize=5) 
+        self.running = True
+        self.paused = False
+        
+        # 2. 状态变量
+        self._frame = None
+        self._current_pts = 0
+        self.start_time = 0
+
+        # 3. 启动后台解码线程
+        self.decode_thread = threading.Thread(target=self._decode_loop, daemon=True)
+        self.decode_thread.start()
+
+        # 4. 启动渲染轮询线程 (或者使用精准的间隔控制)
+        self.render_thread = threading.Thread(target=self._render_loop, daemon=True)
+        self.render_thread.start()
 
         self.program = None
         self.vao = None
         self.vbo = None
         self.ebo = None
 
-    def _grab_frame(self):
-        if self.paused:
-            return
+    def _decode_loop(self):
+        """ 生产者：不停解码存入队列 """
+        while self.running:
+            if self.paused or self.frame_queue.full():
+                time.sleep(0.01)
+                continue
+                
+            frame, pts = self.decoder.read_frame()
+            if frame is not None:
+                self.frame_queue.put((frame, pts))
+            else:
+                # 播放结束重置
+                #self.seek_to(0)
 
-        frame, _ = self.decoder.read_frame()
-        if frame is None:
-            self.decoder.seek(0)
-            return
+                #直接停止播放
+                self.pause()
 
+    def _render_loop(self):
+        """ 消费者：根据 PTS 同步时钟 """
+
+        # 初始时先不设置 start_time，等到真正拿到第一帧再开始计时
+        self.start_time = None
+        #self.start_time = time.perf_counter()
+        
+        while self.running:
+            if self.paused:
+                time.sleep(0.01)
+                continue
+
+            try:
+                # 查看队列里的下一帧，但不取出
+                frame, pts = self.frame_queue.queue[0]
+
+                # 如果是第一帧，或者 seek 之后，初始化时钟
+                if self.start_time is None:
+                    self.start_time = time.perf_counter() - pts
+                
+                # 计算视频播放到现在的物理时间
+                elapsed = time.perf_counter() - self.start_time
+                
+                # --- 同步核心逻辑 ---
+                if elapsed >= pts:
+                    # 时间到了，取出并更新画面
+                    self.frame_queue.get()
+                    with self._lock:
+                        self._frame = np.ascontiguousarray(frame, dtype=np.uint8)
+                        self._current_pts = pts
+                    self.update() # 触发 paintGL
+                else:
+                    # 时间还没到，休眠一小会儿再检查
+                    sleep_time = max(0.001, (pts - elapsed) / 2)
+                    time.sleep(sleep_time)
+                    
+            except IndexError:
+                # 队列空了，等解码
+                time.sleep(0.01)
+    def seek_to(self, seconds):
+        """外部跳转调用"""
+        # 1. 停止当前渲染逻辑的判断
         with self._lock:
-            # 必须是 C 连续数组，且类型正确
-            self._frame = np.ascontiguousarray(frame, dtype=np.uint8)
+            # 2. 清空队列，防止播放跳转前的旧帧
+            while not self.frame_queue.empty():
+                try: self.frame_queue.get_nowait()
+                except: break
+            
+            # 3. 解码器跳转
+            self.decoder.seek(seconds)
+            
+            # 4. 重置时钟：关键！让 elapsed 重新对齐
+            self.start_time = time.perf_counter() - seconds
+            self._current_pts = seconds
 
-        if self._initialized:
-            self.update()
+    def play(self):
+        self.paused = False
+        #self.running=True
+    
+    def pause(self):
+        self.paused = True
+        #self.running = False
 
     def initializeGL(self):
         # 即使改用 GL，保留此行以防 Qt 内部需要
@@ -82,6 +161,7 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
         with self._lock:
+            if self._frame is None: return
             frame = self._frame
         
         if frame is None:
@@ -187,3 +267,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
             gl_FragColor = texture2D(tex, v_tex);
         }
         """
+    def closeEvent(self, event):
+        self.running = False
+        self.decode_thread.join()
+        self.render_thread.join()
+        super().closeEvent(event)
