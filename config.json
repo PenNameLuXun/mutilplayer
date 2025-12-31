@@ -1,0 +1,7 @@
+{
+  "hwaccel": "d3d11va",
+  "screens": {
+    "0": ["a.mp4", "b.mp4", "c.mp4"],
+    "1": ["d.mp4"]
+  }
+}
