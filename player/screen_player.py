@@ -65,6 +65,8 @@ class ScreenPlayer(QWidget):
 
         layout = QGridLayout(self)
         layout.setSpacing(0)
+        layout.setVerticalSpacing(0)
+        layout.setHorizontalSpacing(0)
         layout.setContentsMargins(0, 0, 0, 0)
 
         # 读取所有视频分辨率

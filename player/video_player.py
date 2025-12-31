@@ -14,6 +14,8 @@ class VideoPlayer(QWidget):
         #self.setWindowTitle("Gemini Video Player")
         #self.resize(1000, 700)
 
+        self.setContentsMargins(0,0,0,0)
+
         # 1. 初始化渲染组件
         
         self.video_panel = VideoPanel(path, config,hwaccel)
@@ -34,6 +36,8 @@ class VideoPlayer(QWidget):
 
         # 3. 布局管理
         main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0,0,0,0)
+        main_layout.setSpacing(0)
         main_layout.addWidget(self.video_panel, stretch=1) # 视频占主要空间
 
         control_layout = QHBoxLayout()
