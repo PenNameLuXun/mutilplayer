@@ -1,118 +1,189 @@
-# from PySide6.QtWidgets import QWidget, QVBoxLayout
-# from .video_decoder import VideoDecoder
-# from .control_bar import ControlBar
-# from .video_widget import VideoWidget
-
-# class VideoPanel(QWidget):
-#     def __init__(self, path, hwaccel):
-#         super().__init__()
-#         layout = QVBoxLayout(self)
-
-#         decoder = VideoDecoder(path, hwaccel)
-#         video = VideoWidget(decoder)
-#         controls = ControlBar(video)
-
-#         layout.addWidget(video, 1)
-#         #layout.addWidget(controls, 0)
-
+import os
+import threading
+import ctypes
+import numpy as np
 
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtGui import QOpenGLContext, QOpenGLExtraFunctions
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader
+
+# 导入 PyOpenGL
+try:
+    from OpenGL import GL
+except ImportError:
+    raise ImportError("请安装 PyOpenGL: pip install PyOpenGL")
+
 from .video_decoder import VideoDecoder
 
-from PySide6.QtCore import QTimer
-from PySide6.QtOpenGL import QOpenGLTexture
-import numpy as np
-
-# video_panel.py
-from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtCore import QTimer
-from OpenGL.GL import *
-import numpy as np
-
-class VideoPanel(QOpenGLWidget):
+class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
     def __init__(self, path, hwaccel, parent=None):
-        """
-        decoder: 自己封装的解码器对象，必须提供:
-            - read_frame() -> (frame: numpy RGBA, pts)
-            - seek(seconds)
-        """
         super().__init__(parent)
+        QOpenGLExtraFunctions.__init__(self)
+
         self.decoder = VideoDecoder(path, hwaccel)
         self.paused = False
-        self.frame = None  # 当前帧 (numpy RGBA)
-        self.current_time = 0
 
-        # 定时器控制播放
+        self._frame = None
+        self._lock = threading.Lock()
+        
+        self.video_width = 0
+        self.video_height = 0
+        self._texture_id = None
+        self._initialized = False 
+
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30)  # 控制刷新约33ms => ~30fps
+        self.timer.timeout.connect(self._grab_frame)
+        self.timer.start(30)
 
-    def update_frame(self):
+        self.program = None
+        self.vao = None
+        self.vbo = None
+        self.ebo = None
+
+    def _grab_frame(self):
         if self.paused:
             return
 
-        frame, pts = self.decoder.read_frame()
+        frame, _ = self.decoder.read_frame()
         if frame is None:
-            # 视频播完，循环播放
             self.decoder.seek(0)
             return
 
-        self.frame = frame
-        self.current_time = pts
-        self.update()  # 触发 paintGL
+        with self._lock:
+            # 必须是 C 连续数组，且类型正确
+            self._frame = np.ascontiguousarray(frame, dtype=np.uint8)
+
+        if self._initialized:
+            self.update()
 
     def initializeGL(self):
-        glClearColor(0, 0, 0, 1)
-        glEnable(GL_TEXTURE_2D)
+        # 即使改用 GL，保留此行以防 Qt 内部需要
+        self.initializeOpenGLFunctions()
 
-        # 初始化纹理对象
-        self.texture_id = glGenTextures(1)
+        self._init_shader()
+        self._init_geometry()
+        
+        # 使用 GL 生成纹理
+        self._texture_id = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture_id)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
 
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
+        GL.glClearColor(0.0, 0.0, 0.0, 1.0)
+        self._initialized = True
 
     def paintGL(self):
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
-        if self.frame is None:
+        if not self._initialized or self._texture_id is None:
             return
 
-        # 上传帧到纹理
-        h, w, _ = self.frame.shape
-        glBindTexture(GL_TEXTURE_2D, self.texture_id)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, self.frame)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
 
-        # 计算缩放矩形保持比例 + 居中
-        panel_w, panel_h = self.width(), self.height()
-        scale = min(panel_w / w, panel_h / h)
-        disp_w, disp_h = w * scale, h * scale
-        x, y = (panel_w - disp_w) / 2, (panel_h - disp_h) / 2
+        with self._lock:
+            frame = self._frame
+        
+        if frame is None:
+            return
 
-        # 绘制纹理矩形
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, self.texture_id)
-        glBegin(GL_QUADS)
-        # 左下角
-        glTexCoord2f(0.0, 0.0)
-        glVertex2f(x, y)
-        # 右下角
-        glTexCoord2f(1.0, 0.0)
-        glVertex2f(x + disp_w, y)
-        # 右上角
-        glTexCoord2f(1.0, 1.0)
-        glVertex2f(x + disp_w, y + disp_h)
-        # 左上角
-        glTexCoord2f(0.0, 1.0)
-        glVertex2f(x, y + disp_h)
-        glEnd()
-        glBindTexture(GL_TEXTURE_2D, 0)
+        h, w, _ = frame.shape
 
-    # 控制接口
-    def toggle_pause(self):
-        self.paused = not self.paused
+        self.program.bind()
+        # 传入 uniform
+        self.program.setUniformValue("videoSize", float(w), float(h))
+        self.program.setUniformValue("widgetSize", float(self.width()), float(self.height()))
 
-    def seek(self, seconds):
-        self.decoder.seek(seconds)
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self._texture_id)
 
+        # 纹理上传
+        if w != self.video_width or h != self.video_height:
+            GL.glTexImage2D(
+                GL.GL_TEXTURE_2D, 0, GL.GL_RGB,
+                w, h, 0,
+                GL.GL_RGB, GL.GL_UNSIGNED_BYTE, frame
+            )
+            self.video_width, self.video_height = w, h
+        else:
+            GL.glTexSubImage2D(
+                GL.GL_TEXTURE_2D, 0, 0, 0, w, h,
+                GL.GL_RGB, GL.GL_UNSIGNED_BYTE, frame
+            )
+
+        GL.glBindVertexArray(self.vao)
+        GL.glDrawElements(GL.GL_TRIANGLES, 6, GL.GL_UNSIGNED_INT, None)
+        GL.glBindVertexArray(0)
+
+        self.program.release()
+
+    def _init_shader(self):
+        self.program = QOpenGLShaderProgram(self)
+        vs_src = self._load_shader("video.vert")
+        fs_src = self._load_shader("video.frag")
+
+        self.program.addShaderFromSourceCode(QOpenGLShader.Vertex, vs_src)
+        self.program.addShaderFromSourceCode(QOpenGLShader.Fragment, fs_src)
+
+        if not self.program.link():
+            raise RuntimeError(f"Link Error: {self.program.log()}")
+
+    def _init_geometry(self):
+        # 顶点：Pos(x,y), Tex(u,v)
+        vertices = np.array([
+            -1.0,  1.0,  0.0, 0.0,
+            -1.0, -1.0,  0.0, 1.0,
+             1.0, -1.0,  1.0, 1.0,
+             1.0,  1.0,  1.0, 0.0,
+        ], dtype=np.float32)
+
+        indices = np.array([0, 1, 2, 0, 2, 3], dtype=np.uint32)
+
+        # 全部改用 GL 接口，避免 PySide 属性丢失问题
+        self.vao = GL.glGenVertexArrays(1)
+        self.vbo = GL.glGenBuffers(1)
+        self.ebo = GL.glGenBuffers(1)
+
+        GL.glBindVertexArray(self.vao)
+
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL.GL_STATIC_DRAW)
+
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
+        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL.GL_STATIC_DRAW)
+
+        # Pos: index 0
+        GL.glVertexAttribPointer(0, 2, GL.GL_FLOAT, GL.GL_FALSE, 16, ctypes.c_void_p(0))
+        GL.glEnableVertexAttribArray(0)
+
+        # TexCoord: index 1
+        GL.glVertexAttribPointer(1, 2, GL.GL_FLOAT, GL.GL_FALSE, 16, ctypes.c_void_p(8))
+        GL.glEnableVertexAttribArray(1)
+
+        GL.glBindVertexArray(0)
+
+    def _load_shader(self, name):
+        curr_dir = os.path.dirname(__file__)
+        path = os.path.join(curr_dir, "..", "shaders", name)
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        
+        # 默认备用 Shader
+        if "vert" in name:
+            return """
+            attribute vec2 pos;
+            attribute vec2 tex;
+            varying vec2 v_tex;
+            void main() {
+                gl_Position = vec4(pos, 0.0, 1.0);
+                v_tex = tex;
+            }
+            """
+        return """
+        uniform sampler2D tex;
+        varying vec2 v_tex;
+        void main() {
+            gl_FragColor = texture2D(tex, v_tex);
+        }
+        """
