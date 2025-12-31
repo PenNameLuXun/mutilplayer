@@ -68,10 +68,10 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 self.frame_queue.put((frame, pts))
             else:
                 # 播放结束重置
-                #self.seek_to(0)
+                self.seek_to(0)
 
                 #直接停止播放
-                self.pause()
+                #self.pause()
 
     def _render_loop(self):
         """ 消费者：根据 PTS 同步时钟 """
@@ -135,6 +135,24 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
     def pause(self):
         self.paused = True
         #self.running = False
+
+
+    def stop(self):
+        """强制停止所有线程"""
+        self.running = False
+        # 唤醒可能阻塞在队列上的线程
+        try:
+            while not self.frame_queue.empty():
+                self.frame_queue.get_nowait()
+        except:
+            pass
+        
+        # 等待线程结束
+        if hasattr(self, 'decode_thread') and self.decode_thread.is_alive():
+            self.decode_thread.join(timeout=1.0)
+        if hasattr(self, 'render_thread') and self.render_thread.is_alive():
+            self.render_thread.join(timeout=1.0)
+        print("VideoPanel threads stopped.")
 
     def initializeGL(self):
         # 即使改用 GL，保留此行以防 Qt 内部需要
@@ -268,7 +286,10 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         }
         """
     def closeEvent(self, event):
-        self.running = False
-        self.decode_thread.join()
-        self.render_thread.join()
+        self.stop()
         super().closeEvent(event)
+
+
+    def destroy(self, /, destroyWindow = ..., destroySubWindows = ...):
+        self.stop()
+        return super().destroy(destroyWindow, destroySubWindows)

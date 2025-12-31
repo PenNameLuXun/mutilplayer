@@ -51,12 +51,16 @@ class ScreenPlayer(QWidget):
     def __init__(self, screen, videos, hwaccel):
         super().__init__()
 
+        self.panels =[]
+
         # 屏幕尺寸
         self.screen_w = screen.width
         self.screen_h = screen.height
 
-        self.setGeometry(screen.x, screen.y, self.screen_w, self.screen_h)
-        self.showFullScreen()
+        # self.setGeometry(screen.x, screen.y, self.screen_w, self.screen_h)
+        # self.showFullScreen()
+
+        self.setGeometry(0,0,1200,720)
 
         layout = QGridLayout(self)
         layout.setSpacing(0)
@@ -113,3 +117,8 @@ class ScreenPlayer(QWidget):
             c = i % cols
             panel = VideoPlayer(info["path"], hwaccel)
             layout.addWidget(panel, r, c)
+            self.panels.append(panel)
+
+    def stop(self):
+        for panel in self.panels:
+            panel.stop()
