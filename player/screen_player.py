@@ -1,7 +1,7 @@
 import math
 import av
 
-from PySide6.QtWidgets import QWidget, QGridLayout
+from PySide6.QtWidgets import QWidget, QGridLayout,QPushButton
 import subprocess
 from .video_player import VideoPlayer
 
@@ -58,10 +58,18 @@ class ScreenPlayer(QWidget):
         self.screen_w = screen.width
         self.screen_h = screen.height
 
-        # self.setGeometry(screen.x, screen.y, self.screen_w, self.screen_h)
+        #self.setGeometry(screen.x, screen.y, self.screen_w, self.screen_h)
         # self.showFullScreen()
 
-        self.setGeometry(0,0,1200,720)
+        # self.full_btn = QPushButton("FULL")
+        # self.full_state = False
+        # self.full_btn.clicked.connect(lambda: self.toggle_full())
+        # self.full_btn.setFixedSize(30,30)
+        # self.full_btn.show()
+        # self.full_btn.raise_()
+
+        self.setGeometry(screen.x, screen.y+30,1200,720)
+        #self.showFullScreen()
 
         layout = QGridLayout(self)
         layout.setSpacing(0)
@@ -71,7 +79,7 @@ class ScreenPlayer(QWidget):
 
         # 读取所有视频分辨率
         video_infos = []
-        for video in videos:
+        for video in videos["video"]:
             print("video:",video)
             path = video["path"]
             vw, vh = probe_resolution(path)
@@ -117,6 +125,10 @@ class ScreenPlayer(QWidget):
         rows = best["rows"]
         cols = best["cols"]
 
+
+        if  "cols" in videos:
+            cols = videos["cols"]
+
         # 按最佳布局放置视频
         for i, info in enumerate(video_infos):
             r = i // cols
@@ -128,3 +140,16 @@ class ScreenPlayer(QWidget):
     def stop(self):
         for panel in self.panels:
             panel.stop()
+
+    # def resizeEvent(self, event):
+    #     # 每次窗口大小变动，重新定位按钮
+    #     self.full_btn.move(self.width() - 60, 10) 
+    #     self.full_btn.raise_()
+    #     super().resizeEvent(event)
+
+    def toggle_full(self):
+        self.full_state = not self.full_state
+        if self.full_state:
+            self.showNormal()
+        else:
+            self.showFullScreen()

@@ -38,7 +38,7 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self._initialized = False 
 
         # 1. 核心缓冲区：存放解码好的帧 (frame, pts)
-        self.frame_queue = queue.Queue(maxsize=50) 
+        self.frame_queue = queue.Queue(maxsize=8) 
         self.running = True
         self.paused = False
         

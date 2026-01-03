@@ -1,24 +1,38 @@
 {
   "hwaccel": "d3d11va",
   "screens": {
-    "0": [
-      {
-        "path": "a.mp4",
-        "play_sections": [
-          {
-            "start_time": 1,
-            "duration": 4
-          },
-          {
-            "start_time": 6,
-            "duration": -1
-          }
-        ]
-      },
-      { "path": "b.mp4" },
-      { "path": "c.mp4" },
-      { "path": "g.mp4" }
-    ],
-    "1": [{ "path": "d.mp4" }]
+    "0": {
+      "video": [
+        {
+          "path": "a.mp4",
+          "play_sections": [
+            {
+              "start_time": 1,
+              "duration": 4
+            },
+            {
+              "start_time": 6,
+              "duration": -1
+            }
+          ]
+        },
+        {
+          "path": "b.mp4"
+        },
+        {
+          "path": "c.mp4"
+        },
+        {
+          "path": "g.mp4"
+        }
+      ]
+    },
+    "1": {
+      "video": [
+        {
+          "path": "d.mp4"
+        }
+      ]
+    }
   }
 }
