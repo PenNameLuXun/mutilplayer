@@ -1,6 +1,6 @@
 import sys,time
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QSlider, QLabel, QApplication)
+                             QPushButton, QSlider, QLabel, QApplication,QFrame)
 from PySide6.QtCore import Qt, Signal,QTimer
 
 from .video_panel import VideoPanel  # 确保路径正确
@@ -9,62 +9,74 @@ from .video_panel import VideoPanel  # 确保路径正确
 # 这里通过一个包装类将它们组合起来
 
 class VideoPlayer(QWidget):
-    def __init__(self, path, config,hwaccel=None):
+    def __init__(self, path, config, hwaccel=None):
         super().__init__()
-        #self.setWindowTitle("Gemini Video Player")
-        #self.resize(1000, 700)
-
-        self.setContentsMargins(0,0,0,0)
-
-        # 1. 初始化渲染组件
+        self.setMouseTracking(True) # 开启鼠标追踪
+        self.setContentsMargins(0, 0, 0, 0)
         
-        self.video_panel = VideoPanel(path, config,hwaccel)
-        
-        # 获取视频总时长 (用于进度条最大值)
+        # 1. 初始化视频渲染组件
+        self.video_panel = VideoPanel(path, config, hwaccel)
         self.duration = float(self.video_panel.decoder.duration)
-        self.current_pts = 0.0
-
-        # 2. 创建 UI 控件
-        self.play_btn = QPushButton("S")
-        self.prev_btn = QPushButton("<")
-        self.next_btn = QPushButton(">")
         
+        # 2. 创建悬浮控制栏容器
+        self.control_widget = QFrame(self)
+        self.setup_ui()
+        self.setup_styles()
+        
+        # 3. 布局设置 (叠加布局)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.video_panel)
+        
+        # 控制栏初始状态
+        self.control_widget.hide() 
+        
+        # 定时器
+        self.ui_timer = QTimer(self)
+        self.ui_timer.timeout.connect(self.update_ui_state)
+        self.ui_timer.start(100)
+        
+        self.is_dragging = False
+
+    def setup_ui(self):
+        """创建符合图示风格的 UI 布局"""
+        # 这里的布局让 control_widget 内部横向排列
+        h_layout = QHBoxLayout(self.control_widget)
+        h_layout.setContentsMargins(15, 0, 15, 0)
+        h_layout.setSpacing(15)
+
+        # 播放/暂停按钮 (用字符模拟图标)
+        self.play_btn = QPushButton("ll") # 暂停样式
+        self.play_btn.setFixedSize(30, 30)
+        
+        # 当前时间
+        self.cur_time_label = QLabel("00:00")
+        
+        # 进度条
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(0, int(self.duration * 1000))  # 以毫秒为单位提高精度
+        self.slider.setRange(0, int(self.duration * 1000))
         
-        self.time_label = QLabel("00:00 / 00:00")
-
-        # 3. 布局管理
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0,0,0,0)
-        main_layout.setSpacing(0)
-        main_layout.addWidget(self.video_panel, stretch=1) # 视频占主要空间
-
-        control_layout = QHBoxLayout()
-        control_layout.addWidget(self.prev_btn)
-        control_layout.addWidget(self.play_btn)
-        control_layout.addWidget(self.next_btn)
-        control_layout.addWidget(self.slider)
-        control_layout.addWidget(self.time_label)
+        # 总时长
+        self.total_time_label = QLabel(self.format_time(self.duration))
         
-        main_layout.addLayout(control_layout)
+        # 倍速和音量
+        self.speed_btn = QLabel("倍速")
+        self.vol_btn = QPushButton("🔈")
+        self.vol_btn.setFixedSize(30, 30)
 
-        # 4. 信号连接
+        # 按顺序添加
+        h_layout.addWidget(self.play_btn)
+        h_layout.addWidget(self.cur_time_label)
+        h_layout.addWidget(self.slider, stretch=1) # 进度条拉伸
+        h_layout.addWidget(self.total_time_label)
+        h_layout.addWidget(self.speed_btn)
+        h_layout.addWidget(self.vol_btn)
+
+        # 信号连接
         self.play_btn.clicked.connect(self.toggle_play)
-        self.prev_btn.clicked.connect(lambda: self.seek_relative(-3))
-        self.next_btn.clicked.connect(lambda: self.seek_relative(3))
-        
-        # 进度条拖动信号
         self.slider.sliderPressed.connect(self.on_slider_pressed)
         self.slider.sliderMoved.connect(self.on_slider_Moved)
         self.slider.sliderReleased.connect(self.on_slider_released)
-
-        # UI 更新定时器 (只需要 10Hz 左右，没必要太快)
-        self.ui_timer = QTimer(self)
-        self.ui_timer.timeout.connect(self.update_ui_state)
-        self.ui_timer.start(100) # 100ms 更新一次进度条
-
-        self.is_dragging = False # 防止进度条自动跳动干扰拖拽
 
     # ==========================================================
     # 核心控制逻辑
@@ -84,9 +96,9 @@ class VideoPlayer(QWidget):
         # 更新时间标签
         cur_str = self.format_time(current_pts)
         total_str = self.format_time(self.duration)
-        self.time_label.setText(f"{cur_str} / {total_str}")
-
-        self.play_btn.setText("P" if self.video_panel.paused else "S")
+        self.cur_time_label.setText(cur_str)
+        self.total_time_label.setText(total_str)
+        self.play_btn.setText("ll" if not self.video_panel.paused else "▶")
 
     def stop(self):
         self.video_panel.stop()
@@ -122,3 +134,66 @@ class VideoPlayer(QWidget):
     def format_time(self, seconds):
         m, s = divmod(int(seconds), 60)
         return f"{m:02d}:{s:02d}"
+    
+
+
+    def setup_styles(self):
+        """设置 QSS 样式表，实现半透明黑底和白色细进度条"""
+        self.setStyleSheet("""
+            QWidget { font-family: "Microsoft YaHei"; color: white; }
+            
+            /* 控制栏外壳 */
+            QFrame {
+                background-color: rgba(30, 30, 30, 180); 
+                border-radius: 12px;
+            }
+            QLabel {
+                background: transparent;
+            }
+
+            /* 按钮样式 */
+            QPushButton {
+                background: transparent;
+                border: none;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover { color: #ccc; }
+
+            /* 进度条样式 (模仿图示) */
+            QSlider::groove:horizontal {
+                height: 3px;
+                background: rgba(255, 255, 255, 60);
+            }
+            QSlider::sub-page:horizontal {
+                background: white;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                width: 12px;
+                height: 12px;
+                margin: -5px 0;
+                border-radius: 6px;
+            }
+        """)
+
+    def resizeEvent(self, event):
+        """当窗口大小改变时，重新计算控制栏的位置"""
+        super().resizeEvent(event)
+        # 将控制栏放在底部居中，左右留间距
+        bar_width = self.width() - 40
+        bar_height = 30
+        self.control_widget.setGeometry(20, self.height() - bar_height - 20, bar_width, bar_height)
+
+    # ================= 交互逻辑 =================
+
+    def enterEvent(self, event):
+        """鼠标进入显示控制栏"""
+        self.control_widget.show()
+        self.control_widget.raise_()
+
+    def leaveEvent(self, event):
+        """鼠标离开隐藏控制栏"""
+        # 如果正在拖动进度条，不隐藏
+        if not self.is_dragging:
+            self.control_widget.hide()
