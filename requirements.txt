@@ -4,3 +4,4 @@ numpy
 screeninfo
 PyOpenGL 
 PyOpenGL_accelerate
+pyaudio

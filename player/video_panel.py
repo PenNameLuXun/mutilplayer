@@ -10,6 +10,8 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader
 
 from PySide6.QtCore import Signal
+
+import pyaudio
 # 导入 PyOpenGL
 try:
     from OpenGL import GL
@@ -51,6 +53,20 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self._current_pts = 0
         self.start_time = 0
 
+        # 音频相关
+        self.audio_queue = queue.Queue(maxsize=20)
+        self.p = pyaudio.PyAudio()
+        self.audio_stream = self.p.open(
+            format=pyaudio.paInt16,
+            channels=2,
+            rate=44100,
+            output=True
+        )
+        
+        # 启动音频播放线程
+        self.audio_thread = threading.Thread(target=self._audio_loop, daemon=True)
+        self.audio_thread.start()
+
         # 3. 启动后台解码线程
         self.decode_thread = threading.Thread(target=self._decode_loop, daemon=True)
         self.decode_thread.start()
@@ -89,6 +105,10 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                     while not self.frame_queue.empty():
                         self.frame_queue.get_nowait()
 
+                    while not self.audio_queue.empty():
+                        try: self.audio_queue.get_nowait()
+                        except: break
+
                     # 重置时钟
                     self.start_time = time.perf_counter() - target
                     self._current_pts = target
@@ -105,27 +125,38 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 # 跳转后立即继续循环，确保逻辑重新判定
                 continue
                 
-            # 2. 读取帧
-            frame, pts = self.decoder.read_frame()
+            # # 2. 读取帧
+            # frame, pts = self.decoder.read_frame()
             
-            if frame is not None:
-                # 3. 关键防御：如果读到的帧 PTS 明显早于当前目标区间（seek 误差产生）
-                # 我们需要找到当前应该处于的 start_time
-                target_start = self.get_current_section_start(pts)
-                if pts < target_start - 0.1:
-                    continue # 丢弃该帧，继续读下一帧
+            # if frame is not None:
+            #     # 3. 关键防御：如果读到的帧 PTS 明显早于当前目标区间（seek 误差产生）
+            #     # 我们需要找到当前应该处于的 start_time
+            #     target_start = self.get_current_section_start(pts)
+            #     if pts < target_start - 0.1:
+            #         continue # 丢弃该帧，继续读下一帧
 
-                self.frame_queue.put((frame, pts))
-            else:
-                # 视频结束：安全地回到最初的起点
-                sections = self.cfg.get("play_sections", [])
-                if sections and len(sections) > 0:
-                    # 获取第一个区间的 start_time，如果没有则默认为 0
-                    first_start = sections[0].get("start_time", 0)
-                    self.seek_to(first_start)
-                else:
-                    # 如果根本没有 play_sections，就回到视频最开始
-                    self.seek_to(0)
+            #     self.frame_queue.put((frame, pts))
+            # else:
+            #     # 视频结束：安全地回到最初的起点
+            #     sections = self.cfg.get("play_sections", [])
+            #     if sections and len(sections) > 0:
+            #         # 获取第一个区间的 start_time，如果没有则默认为 0
+            #         first_start = sections[0].get("start_time", 0)
+            #         self.seek_to(first_start)
+            #     else:
+            #         # 如果根本没有 play_sections，就回到视频最开始
+            #         self.seek_to(0)
+
+            # 读取数据包
+            media_type, data, pts = self.decoder.read_packet()
+            
+            if media_type == "video":
+                # 防御性丢帧逻辑 (保留)
+                self.frame_queue.put((data, pts))
+            elif media_type == "audio":
+                self.audio_queue.put((data, pts))
+            elif media_type is None:
+                time.sleep(0.01)
 
     def get_current_section_start(self, pts):
         """辅助函数：找到给定 PTS 应该对应的区间起点"""
@@ -136,6 +167,28 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
             if pts <= end + 0.1:
                 return start
         return 0.0
+    
+    def _audio_loop(self):
+        """音频消费线程"""
+        while self.running:
+            if self.paused:
+                time.sleep(0.01)
+                continue
+            
+            try:
+                # 获取音频块
+                data, pts = self.audio_queue.get(timeout=1)
+                
+                # 同步逻辑：如果音频超前视频太多，等一下
+                # 因为音频播放是阻塞的，它天然会产生一定的节奏
+                if self.start_time is not None:
+                    elapsed = time.perf_counter() - self.start_time
+                    if pts > elapsed + 0.1:
+                        time.sleep(pts - elapsed)
+                
+                self.audio_stream.write(data)
+            except queue.Empty:
+                continue
 
     def _render_loop(self):
         """ 消费者：根据 PTS 同步时钟 """
@@ -180,7 +233,7 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 time.sleep(0.01)
 
     def seek_to(self, seconds,accurate=False):
-        self.request_seek(seconds,accurate)
+        self.request_seek(seconds, accurate)
 
     def request_seek(self, seconds,accurate):
         with self.seek_lock:
@@ -250,6 +303,10 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
             self.decode_thread.join(timeout=1.0)
         if hasattr(self, 'render_thread') and self.render_thread.is_alive():
             self.render_thread.join(timeout=1.0)
+        if hasattr(self, 'audio_stream'):
+            self.audio_stream.stop_stream()
+            self.audio_stream.close()
+        self.p.terminate()
         print("VideoPanel threads stopped.")
 
     def initializeGL(self):
