@@ -97,8 +97,7 @@ class VideoPlayer(QWidget):
 
     def seek_relative(self, delta):
         target = max(0, min(self.duration, self.video_panel.current_second() + delta))
-        self.video_panel.seek_to(target)
-        self.slider.setValue(int(target * 1000))
+        self.video_panel.seek_to(target,True)
 
     def on_slider_pressed(self):
         self.is_dragging = True
