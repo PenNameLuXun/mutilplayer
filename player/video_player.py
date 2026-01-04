@@ -1,16 +1,20 @@
 import sys,time
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QSlider, QLabel, QApplication,QFrame)
-from PySide6.QtCore import Qt, Signal,QTimer
+from PySide6.QtCore import Qt, Signal,QTimer,QPoint
+
+from PySide6.QtGui import QCursor
 
 from .video_panel import VideoPanel  # 确保路径正确
+
+from .little_widgets import SpeedMenu,VolumeMenu
 
 # 假设你的 VideoPanel 和 VideoDecoder 已经在之前的代码中定义好了
 # 这里通过一个包装类将它们组合起来
 
 class VideoPlayer(QWidget):
-    def __init__(self, path, config, hwaccel=None):
-        super().__init__()
+    def __init__(self, path, config, hwaccel=None,parent=None):
+        super().__init__(parent)
         self.setMouseTracking(True) # 开启鼠标追踪
         self.setContentsMargins(0, 0, 0, 0)
         
@@ -20,6 +24,9 @@ class VideoPlayer(QWidget):
         
         # 2. 创建悬浮控制栏容器
         self.control_widget = QFrame(self)
+
+        
+
         self.setup_ui()
         self.setup_styles()
         
@@ -48,6 +55,7 @@ class VideoPlayer(QWidget):
         # 播放/暂停按钮 (用字符模拟图标)
         self.play_btn = QPushButton("ll") # 暂停样式
         self.play_btn.setFixedSize(30, 30)
+        self.play_btn.setObjectName("play_btn")
         
         # 当前时间
         self.cur_time_label = QLabel("00:00")
@@ -60,9 +68,23 @@ class VideoPlayer(QWidget):
         self.total_time_label = QLabel(self.format_time(self.duration))
         
         # 倍速和音量
-        self.speed_btn = QLabel("倍速")
-        self.vol_btn = QPushButton("🔈")
+
+        
+
+        self.speed_btn = QPushButton("倍速",self)
+        self.speed_btn.setMouseTracking(True)
+        self.speed_btn.enterEvent = lambda e: self.show_popup(self.speed_menu, self.speed_btn)
+        #self.speed_btn.leaveEvent = lambda e: self.hide_popup(self.speed_menu, self.speed_btn)
+        self.speed_btn.setFixedSize(30, 30)
+        
+        self.vol_btn = QPushButton("🔈",self)
+        self.vol_btn.enterEvent = lambda e: self.show_popup(self.volume_menu, self.vol_btn)
+        #self.vol_btn.leaveEvent = lambda e: self.hide_popup(self.volume_menu, self.vol_btn)
         self.vol_btn.setFixedSize(30, 30)
+
+        # 初始化弹出组件
+        self.speed_menu = SpeedMenu(self.speed_btn, self.on_speed_change)
+        self.volume_menu = VolumeMenu(self.vol_btn, self.on_volume_change)
 
         # 按顺序添加
         h_layout.addWidget(self.play_btn)
@@ -149,15 +171,18 @@ class VideoPlayer(QWidget):
             }
             QLabel {
                 background: transparent;
+                font-size:11px;
             }
 
             /* 按钮样式 */
             QPushButton {
                 background: transparent;
                 border: none;
-                font-size: 18px;
+                font-size: 11px;
                 font-weight: bold;
             }
+            QPushButton#play_btn{font-size: 18px;}
+                           
             QPushButton:hover { color: #ccc; }
 
             /* 进度条样式 (模仿图示) */
@@ -193,7 +218,49 @@ class VideoPlayer(QWidget):
         self.control_widget.raise_()
 
     def leaveEvent(self, event):
-        """鼠标离开隐藏控制栏"""
-        # 如果正在拖动进度条，不隐藏
-        if not self.is_dragging:
-            self.control_widget.hide()
+        # 1. 正在拖动进度条时不隐藏
+        if self.is_dragging:
+            return
+
+        # 2. 获取当前鼠标的全局位置
+        mouse_pos = QCursor.pos()
+
+        # 3. 检查鼠标是否在倍速菜单或音量菜单的区域内
+        # mapFromGlobal 将全局坐标转为小部件内部坐标，看是否在 rect() 范围内
+        in_speed_menu = self.speed_menu.isVisible() and \
+                        self.speed_menu.rect().contains(self.speed_menu.mapFromGlobal(mouse_pos))
+        
+        in_volume_menu = self.volume_menu.isVisible() and \
+                        self.volume_menu.rect().contains(self.volume_menu.mapFromGlobal(mouse_pos))
+
+        # 如果鼠标进入了这些子插件，则不隐藏控制栏
+        if in_speed_menu or in_volume_menu:
+            return
+
+        self.control_widget.hide()
+
+    def show_popup(self, menu, target_widget):
+        """计算位置并显示弹出层"""
+        # 获取按钮在全球屏幕中的位置
+        global_pos = target_widget.mapToGlobal(QPoint(0, 0))
+        # 放置在按钮上方（减去菜单高度和一点间距）
+        menu.adjustSize()
+        x = global_pos.x() + (target_widget.width() - menu.width()) // 2
+        y = global_pos.y() - menu.height() - 5
+        menu.move(x, y)
+        menu.show()
+
+    def hide_popup(self, menu, target_widget):
+        menu.hide()
+        pass
+
+    def on_speed_change(self, val):
+        print(f"切换倍速: {val}")
+        # 这里调用你解码器的 set_speed 方法
+        # 同时更新按钮文字和颜色样式
+        self.speed_btn.setText(val)
+        self.speed_menu.hide()
+
+    def on_volume_change(self, val):
+        # 调整音量逻辑
+        pass

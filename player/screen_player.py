@@ -133,7 +133,7 @@ class ScreenPlayer(QWidget):
         for i, info in enumerate(video_infos):
             r = i // cols
             c = i % cols
-            panel = VideoPlayer(info["path"],info["config"], hwaccel)
+            panel = VideoPlayer(info["path"],info["config"], hwaccel,self)
             layout.addWidget(panel, r, c)
             self.panels.append(panel)
 
