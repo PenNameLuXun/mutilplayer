@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QSlider, QLabel, QApplication,QFrame)
 from PySide6.QtCore import Qt, Signal,QTimer,QPoint
 
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor,QKeyEvent
 
 from .video_panel import VideoPanel  # 确保路径正确
 
@@ -25,7 +25,8 @@ class VideoPlayer(QWidget):
         # 2. 创建悬浮控制栏容器
         self.control_widget = QFrame(self)
 
-        
+        # 确保小部件可以接受键盘焦点
+        self.setFocusPolicy(Qt.StrongFocus)
 
         self.setup_ui()
         self.setup_styles()
@@ -264,3 +265,26 @@ class VideoPlayer(QWidget):
     def on_volume_change(self, val):
         # 调整音量逻辑
         pass
+
+
+    # 重写键盘按下事件
+    def keyPressEvent(self, event: QKeyEvent):
+        # 左方向键：后退 3 秒
+        if event.key() == Qt.Key_Left:
+            self.seek_relative(-3)
+            # 这里的 seek_relative 是你之前定义的函数
+            # 它调用了 self.video_panel.seek_to(target, True)
+            event.accept()
+            
+        # 右方向键：前进 3 秒
+        elif event.key() == Qt.Key_Right:
+            self.seek_relative(3)
+            event.accept()
+            
+        # 空格键：切换播放/暂停（可选，增加体验）
+        elif event.key() == Qt.Key_Space:
+            self.toggle_play()
+            event.accept()
+            
+        else:
+            super().keyPressEvent(event)

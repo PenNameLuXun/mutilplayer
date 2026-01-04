@@ -9,6 +9,7 @@ from PySide6.QtGui import QOpenGLContext, QOpenGLExtraFunctions
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader
 
+from PySide6.QtCore import Signal
 # 导入 PyOpenGL
 try:
     from OpenGL import GL
@@ -18,6 +19,7 @@ except ImportError:
 from .video_decoder import VideoDecoder
 
 class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
+    request_update = Signal()
     def __init__(self, path, config,hwaccel, parent=None):
         super().__init__(parent)
         QOpenGLExtraFunctions.__init__(self)
@@ -61,6 +63,12 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self.vao = None
         self.vbo = None
         self.ebo = None
+
+        # 定义一个内部信号，用于通知主线程刷新画面
+        #self.request_update = Signal()       
+
+        # 将信号连接到 update槽函数
+        self.request_update.connect(self.update)
 
     def _decode_loop(self):
         while self.running:
@@ -159,7 +167,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                     with self._lock:
                         self._frame = np.ascontiguousarray(frame, dtype=np.uint8)
                         self._current_pts = pts
-                    self.update() # 触发 paintGL
+                    #self.update() # 触发 paintGL
+                    self.request_update.emit()
                 else:
                     # 时间还没到，休眠一小会儿再检查
                     sleep_time = max(0.001, (pts - elapsed) / 2)
