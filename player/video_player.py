@@ -74,13 +74,11 @@ class VideoPlayer(QWidget):
         """定时更新进度条和时间文字"""
         if self.is_dragging:
             return
-            
-        # 直接从 video_panel 获取当前播放的 pts
-        current_pts = self.video_panel._current_pts
         
-        # 更新进度条 (单位：毫秒)
+        current_pts = self.video_panel.current_second()
+        # 更新进度条
         self.slider.blockSignals(True)
-        self.slider.setValue(int(current_pts * 1000))
+        self.slider.setValue(current_pts*1000)
         self.slider.blockSignals(False)
         
         # 更新时间标签
@@ -98,7 +96,7 @@ class VideoPlayer(QWidget):
         self.update_ui_state()
 
     def seek_relative(self, delta):
-        target = max(0, min(self.duration, self.video_panel._current_pts + delta))
+        target = max(0, min(self.duration, self.video_panel.current_second() + delta))
         self.video_panel.seek_to(target)
         self.slider.setValue(int(target * 1000))
 
@@ -111,12 +109,12 @@ class VideoPlayer(QWidget):
 
     def on_slider_released(self):
         target = self.slider.value()
-        self.seek_to(target)
+        self.seek_to(target,True)
         self.is_dragging = False
     
-    def seek_to(self,value):
+    def seek_to(self,value,accurate = False):
         target = value / 1000.0
-        self.video_panel.seek_to(target)
+        self.video_panel.seek_to(target,accurate)
 
     def format_time(self, seconds):
         m, s = divmod(int(seconds), 60)

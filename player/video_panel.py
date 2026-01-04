@@ -29,8 +29,10 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
 
         self._frame = None
         self._lock = threading.Lock()
+
         self.seek_lock = threading.Lock()
-        self.pending_seek = None
+        self.pending_seek  = None
+        self.seek_accurate = False
         
         self.video_width = 0
         self.video_height = 0
@@ -71,9 +73,9 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
             with self.seek_lock:
                 if self.pending_seek is not None:
                     target = self.pending_seek
-                    self.pending_seek = None
-
-                    self.decoder.seek(target)
+                    
+                    self.decoder.seek(target,self.seek_accurate)
+                    
 
                     # 清空旧帧
                     while not self.frame_queue.empty():
@@ -82,6 +84,9 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                     # 重置时钟
                     self.start_time = time.perf_counter() - target
                     self._current_pts = target
+
+                    self.seek_accurate = False
+                    self.pending_seek = None
 
                     continue  # 非常重要：重新进入循环
 
@@ -165,19 +170,20 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 # 队列空了，等解码
                 time.sleep(0.01)
 
-    def seek_to(self, seconds):
-        self.request_seek(seconds)
+    def seek_to(self, seconds,accurate=False):
+        self.request_seek(seconds,accurate)
 
-    def request_seek(self, seconds):
+    def request_seek(self, seconds,accurate):
         with self.seek_lock:
             self.pending_seek = seconds
+            self.seek_accurate = accurate
 
     def current_second(self):
         # 单位：秒)
-        return int(self._current_pts)
+        return int(self._current_pts if self.pending_seek is None else self.pending_seek)
     def current_ms(self):
         # 更新进度条 (单位：毫秒)
-        return int(self._current_pts * 1000)
+        return int(self.current_second() * 1000)
     
     def next_time(self):
         if "play_sections" not in self.cfg or not self.cfg["play_sections"]:
