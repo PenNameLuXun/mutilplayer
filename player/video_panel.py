@@ -29,8 +29,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
 
         self._frame = None
         self._lock = threading.Lock()
-
-        self.decoder_lock = threading.Lock() # 专门用于保护 decoder 的锁
+        self.seek_lock = threading.Lock()
+        self.pending_seek = None
         
         self.video_width = 0
         self.video_height = 0
@@ -60,33 +60,30 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         self.vbo = None
         self.ebo = None
 
-    # def _decode_loop(self):
-    #     """ 生产者：不停解码存入队列 """
-    #     while self.running:
-    #         if self.paused or self.frame_queue.full():
-    #             time.sleep(0.01)
-    #             continue
-
-    #         next_t = self.next_time()
-            
-    #         if next_t != -1:
-    #             self.seek_to(next_t)
-                
-    #         frame, pts = self.decoder.read_frame()
-    #         if frame is not None:
-    #             self.frame_queue.put((frame, pts))
-    #         else:
-    #             # 播放结束重置
-    #             self.seek_to(0)
-
-    #             #直接停止播放
-    #             #self.pause()
-
     def _decode_loop(self):
         while self.running:
             if self.paused or self.frame_queue.full():
                 time.sleep(0.005)
                 continue
+
+
+            # 0. 处理来自UI线程或其他线程的 seek 请求
+            with self.seek_lock:
+                if self.pending_seek is not None:
+                    target = self.pending_seek
+                    self.pending_seek = None
+
+                    self.decoder.seek(target)
+
+                    # 清空旧帧
+                    while not self.frame_queue.empty():
+                        self.frame_queue.get_nowait()
+
+                    # 重置时钟
+                    self.start_time = time.perf_counter() - target
+                    self._current_pts = target
+
+                    continue  # 非常重要：重新进入循环
 
             # 1. 检查是否需要跳转到下一个区间
             jump_target = self.next_time()
@@ -96,8 +93,7 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 continue
                 
             # 2. 读取帧
-            with self._lock:
-                frame, pts = self.decoder.read_frame()
+            frame, pts = self.decoder.read_frame()
             
             if frame is not None:
                 # 3. 关键防御：如果读到的帧 PTS 明显早于当前目标区间（seek 误差产生）
@@ -162,34 +158,19 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
                 else:
                     # 时间还没到，休眠一小会儿再检查
                     sleep_time = max(0.001, (pts - elapsed) / 2)
+                    #print("in sleep...",sleep_time)
                     time.sleep(sleep_time)
                     
             except IndexError:
                 # 队列空了，等解码
                 time.sleep(0.01)
-    # def seek_to(self, seconds):
-    #     """外部跳转调用"""
-    #     # 1. 停止当前渲染逻辑的判断
-    #     with self._lock:
-    #         # 2. 清空队列，防止播放跳转前的旧帧
-    #         while not self.frame_queue.empty():
-    #             try: self.frame_queue.get_nowait()
-    #             except: break
-            
-    #         # 3. 解码器跳转
-    #         self.decoder.seek(seconds)
-            
-    #         # 4. 重置时钟：关键！让 elapsed 重新对齐
-    #         self.start_time = time.perf_counter() - seconds
-    #         self._current_pts = seconds
-    def seek_to(self, seconds):
-        with self._lock:
-            while not self.frame_queue.empty():
-                self.frame_queue.get_nowait()
-            self.decoder.seek(seconds)
-            self.start_time = time.perf_counter() - seconds
-            self._current_pts = seconds
 
+    def seek_to(self, seconds):
+        self.request_seek(seconds)
+
+    def request_seek(self, seconds):
+        with self.seek_lock:
+            self.pending_seek = seconds
 
     def current_second(self):
         # 单位：秒)
@@ -231,11 +212,12 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
     
     def play(self):
         self.paused = False
-        #self.running=True
     
     def pause(self):
         self.paused = True
-        #self.running = False
+
+    def toggle(self):
+        self.paused = not self.paused
 
 
     def stop(self):

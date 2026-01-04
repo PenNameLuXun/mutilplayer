@@ -26,8 +26,8 @@ class VideoPlayer(QWidget):
 
         # 2. 创建 UI 控件
         self.play_btn = QPushButton("S")
-        self.prev_btn = QPushButton("<<")
-        self.next_btn = QPushButton(">>")
+        self.prev_btn = QPushButton("<")
+        self.next_btn = QPushButton(">")
         
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, int(self.duration * 1000))  # 以毫秒为单位提高精度
@@ -56,6 +56,7 @@ class VideoPlayer(QWidget):
         
         # 进度条拖动信号
         self.slider.sliderPressed.connect(self.on_slider_pressed)
+        self.slider.sliderMoved.connect(self.on_slider_Moved)
         self.slider.sliderReleased.connect(self.on_slider_released)
 
         # UI 更新定时器 (只需要 10Hz 左右，没必要太快)
@@ -78,7 +79,9 @@ class VideoPlayer(QWidget):
         current_pts = self.video_panel._current_pts
         
         # 更新进度条 (单位：毫秒)
+        self.slider.blockSignals(True)
         self.slider.setValue(int(current_pts * 1000))
+        self.slider.blockSignals(False)
         
         # 更新时间标签
         cur_str = self.format_time(current_pts)
@@ -91,12 +94,7 @@ class VideoPlayer(QWidget):
         self.video_panel.stop()
 
     def toggle_play(self):
-        self.video_panel.paused = not self.video_panel.paused
-        if not self.video_panel.paused:
-            # 恢复播放时，需要补偿暂停期间流逝的时间
-            # 重新校准 start_time，使得 elapsed = time - start_time 等于当前 pts
-            self.video_panel.start_time = time.perf_counter() - self.video_panel._current_pts
-        
+        self.video_panel.toggle()
         self.update_ui_state()
 
     def seek_relative(self, delta):
@@ -106,11 +104,19 @@ class VideoPlayer(QWidget):
 
     def on_slider_pressed(self):
         self.is_dragging = True
+    
+    def on_slider_Moved(self,value):
+        if self.is_dragging:
+            self.seek_to(value)
 
     def on_slider_released(self):
-        target = self.slider.value() / 1000.0
-        self.video_panel.seek_to(target)
+        target = self.slider.value()
+        self.seek_to(target)
         self.is_dragging = False
+    
+    def seek_to(self,value):
+        target = value / 1000.0
+        self.video_panel.seek_to(target)
 
     def format_time(self, seconds):
         m, s = divmod(int(seconds), 60)
