@@ -1,6 +1,7 @@
 import math
 import av
 
+from PySide6.QtCore import Qt, Signal,QTimer,QPoint
 from PySide6.QtWidgets import QWidget, QGridLayout,QPushButton
 import subprocess
 from .video_player import VideoPlayer
@@ -68,10 +69,18 @@ class ScreenPlayer(QWidget):
         # self.full_btn.show()
         # self.full_btn.raise_()
 
+        self.full_panel = None            # 当前全屏的 panel
+        self.panel_positions = {}         # panel -> (row, col)
+        self.layout:QGridLayout = None
+
         self.setGeometry(screen.x, screen.y+30,1200,720)
         #self.showFullScreen()
 
         layout = QGridLayout(self)
+
+        self.layout = layout              # 保存 grid layout 引用
+        
+
         layout.setSpacing(0)
         layout.setVerticalSpacing(0)
         layout.setHorizontalSpacing(0)
@@ -134,18 +143,16 @@ class ScreenPlayer(QWidget):
             r = i // cols
             c = i % cols
             panel = VideoPlayer(info["path"],info["config"], hwaccel,self)
+
+            panel.request_fullscreen.connect(self.toggle_panel_fullscreen)
+
             layout.addWidget(panel, r, c)
             self.panels.append(panel)
+            self.panel_positions[panel] = (r, c)
 
     def stop(self):
         for panel in self.panels:
             panel.stop()
-
-    # def resizeEvent(self, event):
-    #     # 每次窗口大小变动，重新定位按钮
-    #     self.full_btn.move(self.width() - 60, 10) 
-    #     self.full_btn.raise_()
-    #     super().resizeEvent(event)
 
     def toggle_full(self):
         self.full_state = not self.full_state
@@ -153,3 +160,45 @@ class ScreenPlayer(QWidget):
             self.showNormal()
         else:
             self.showFullScreen()
+
+    def toggle_panel_fullscreen(self, panel: VideoPlayer):
+        if self.full_panel is None:
+            self.enter_panel_fullscreen(panel)
+        else:
+            self.exit_panel_fullscreen()
+
+    def enter_panel_fullscreen(self, panel: VideoPlayer):
+        self.full_panel = panel
+
+        # 隐藏其他 panel
+        for p in self.panels:
+            if p is not panel:
+                p.hide()
+
+        # 移除并重新加入，占满 grid
+        self.layout.removeWidget(panel)
+        self.layout.addWidget(panel, 0, 0, 1, -1)
+
+        panel.raise_()
+        panel.setFocus()
+
+    def exit_panel_fullscreen(self):
+        panel = self.full_panel
+        self.layout.removeWidget(panel)
+
+        r, c = self.panel_positions[panel]
+        self.layout.addWidget(panel, r, c)
+
+        for p in self.panels:
+            p.show()
+
+        self.full_panel = None
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape and self.full_panel:
+            self.exit_panel_fullscreen()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+

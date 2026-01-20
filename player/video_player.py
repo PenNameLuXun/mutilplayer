@@ -13,6 +13,7 @@ from .little_widgets import SpeedMenu,VolumeMenu
 # 这里通过一个包装类将它们组合起来
 
 class VideoPlayer(QWidget):
+    request_fullscreen = Signal(object)  # 把自己传出去
     def __init__(self, path, config, hwaccel=None,parent=None):
         super().__init__(parent)
         self.setMouseTracking(True) # 开启鼠标追踪
@@ -69,9 +70,6 @@ class VideoPlayer(QWidget):
         self.total_time_label = QLabel(self.format_time(self.duration))
         
         # 倍速和音量
-
-        
-
         self.speed_btn = QPushButton("倍速",self)
         self.speed_btn.setMouseTracking(True)
         self.speed_btn.enterEvent = lambda e: self.show_popup(self.speed_menu, self.speed_btn)
@@ -82,6 +80,11 @@ class VideoPlayer(QWidget):
         self.vol_btn.enterEvent = lambda e: self.show_popup(self.volume_menu, self.vol_btn)
         #self.vol_btn.leaveEvent = lambda e: self.hide_popup(self.volume_menu, self.vol_btn)
         self.vol_btn.setFixedSize(30, 30)
+
+
+        self.max_btn = QPushButton("FULL",self)
+        self.max_btn.clicked.connect(self.on_fullscreen_clicked)
+        self.max_btn.setFixedSize(30, 30)
 
         # 初始化弹出组件
         self.speed_menu = SpeedMenu(self.speed_btn, self.on_speed_change)
@@ -94,6 +97,8 @@ class VideoPlayer(QWidget):
         h_layout.addWidget(self.total_time_label)
         h_layout.addWidget(self.speed_btn)
         h_layout.addWidget(self.vol_btn)
+        h_layout.addWidget(self.max_btn)
+        h_layout.setSpacing(3)
 
         # 信号连接
         self.play_btn.clicked.connect(self.toggle_play)
@@ -104,6 +109,10 @@ class VideoPlayer(QWidget):
     # ==========================================================
     # 核心控制逻辑
     # ==========================================================
+
+    def on_fullscreen_clicked(self):
+        self.request_fullscreen.emit(self)
+
 
     def update_ui_state(self):
         """定时更新进度条和时间文字"""
