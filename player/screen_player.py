@@ -3,6 +3,7 @@ import av
 
 from PySide6.QtCore import Qt, Signal,QTimer,QPoint
 from PySide6.QtWidgets import QWidget, QGridLayout,QPushButton
+from PySide6.QtGui import QGuiApplication
 import subprocess
 from .video_player import VideoPlayer
 
@@ -57,21 +58,19 @@ class ScreenPlayer(QWidget):
     def __init__(self, screen, videos, hwaccel):
         super().__init__()
 
+        self.setWindowState(Qt.WindowNoState)
+        self.setAttribute(Qt.WA_NativeWindow, True)
+
         self.panels =[]
 
         # 屏幕尺寸
         self.screen_w = screen.width
         self.screen_h = screen.height
 
-        #self.setGeometry(screen.x, screen.y, self.screen_w, self.screen_h)
-        # self.showFullScreen()
-
-        # self.full_btn = QPushButton("FULL")
         self.full_state = False
-        # self.full_btn.clicked.connect(lambda: self.toggle_full())
-        # self.full_btn.setFixedSize(30,30)
-        # self.full_btn.show()
-        # self.full_btn.raise_()
+
+        self._old_flags = None
+        self._old_geometry = None
 
         self.full_panel = None            # 当前全屏的 panel
         self.full_type = None
@@ -161,10 +160,11 @@ class ScreenPlayer(QWidget):
 
     def toggle_full(self,do_full=False):
         self.full_state = do_full
+        print("self.full_state:",self.full_state)
         if not self.full_state:
-            self.showNormal()
+            self.exit_pseudo_fullscreen()
         else:
-            self.showFullScreen()
+            self.enter_pseudo_fullscreen()
 
     def toggle_panel_fullscreen(self, panel: VideoPlayer,full_type:int):
         self.full_panel = panel
@@ -229,9 +229,56 @@ class ScreenPlayer(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape and self.full_panel:
-            self.exit_panel_fullscreen()
+            self.toggle_panel_fullscreen(self.full_panel,self.full_type&(~FLAG_FULL_SCREEN))
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+    def enter_pseudo_fullscreen(self):
+        if self.windowFlags() & Qt.FramelessWindowHint:
+            return
+        
+        screen = self.windowHandle().screen()
+
+        if not screen:
+            screen = QGuiApplication.primaryScreen()
+
+        self._old_geometry = self.geometry()
+        self._old_flags = self.windowFlags()
+
+        # 1️⃣ 确保是普通窗口状态
+        self.setWindowState(Qt.WindowNoState)
+
+        # 2️⃣ 先 show 一次（非常关键）
+        self.show()
+
+        # 3️⃣ 延迟到事件循环后再操作 geometry
+        def apply_fullscreen():
+            geo = screen.geometry()
+
+            # 去边框
+            self.setWindowFlag(Qt.FramelessWindowHint, True)
+            self.show()
+
+            # ⚠️ 分两步，避免驱动误判
+            # self.move(geo.topLeft())
+            # self.resize(geo.size())
+            self.setWindowState(Qt.WindowMaximized)
+
+        QTimer.singleShot(20, apply_fullscreen)
+
+    def exit_pseudo_fullscreen(self):
+        if not (self.windowFlags() & Qt.FramelessWindowHint):
+            return
+        
+        self.setWindowFlag(Qt.FramelessWindowHint, False)
+        self.setWindowState(Qt.WindowNoState)
+
+        if hasattr(self, "_old_geometry"):
+            self.setGeometry(self._old_geometry)
+
+        self.show()
+
 
 

@@ -107,6 +107,9 @@ class VideoPlayer(QWidget):
         h_layout.addWidget(self.max_btn1)
         h_layout.setSpacing(3)
 
+        self.speed_btn.hide()
+        self.vol_btn.hide()
+
         # 信号连接
         self.play_btn.clicked.connect(self.toggle_play)
         self.slider.sliderPressed.connect(self.on_slider_pressed)
