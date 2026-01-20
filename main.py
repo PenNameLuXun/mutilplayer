@@ -54,11 +54,16 @@ def main():
         print("[ERROR] No 'screens' defined in config.")
         return
 
+    max_id = 0
+    #print("max_id = ",max_id)
     for sid, files in cfg["screens"].items():
         idx = int(sid)
+        
         if idx < 0 or idx >= len(monitors):
             print(f"[WARN] Screen index {idx} not available, skip.")
-            continue
+            #continue
+            idx = max_id
+        max_id = idx
 
         player = ScreenPlayer(monitors[idx], files, cfg.get("hwaccel"))
         player.show()
