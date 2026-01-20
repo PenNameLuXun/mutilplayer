@@ -13,7 +13,7 @@ from .little_widgets import SpeedMenu,VolumeMenu
 # 这里通过一个包装类将它们组合起来
 
 class VideoPlayer(QWidget):
-    request_fullscreen = Signal(object)  # 把自己传出去
+    request_fullscreen = Signal(object,int)  # 把自己传出去
     def __init__(self, path, config, hwaccel=None,parent=None):
         super().__init__(parent)
         self.setMouseTracking(True) # 开启鼠标追踪
@@ -82,9 +82,15 @@ class VideoPlayer(QWidget):
         self.vol_btn.setFixedSize(30, 30)
 
 
-        self.max_btn = QPushButton("FULL",self)
-        self.max_btn.clicked.connect(self.on_fullscreen_clicked)
+        self.max_btn = QPushButton("FULL1",self)
+        self.max_btn.setCheckable(True)
+        self.max_btn.toggled.connect(self.on_fullscreen_toggled)
         self.max_btn.setFixedSize(30, 30)
+
+        self.max_btn1 = QPushButton("FULL2",self)
+        self.max_btn1.setCheckable(True)
+        self.max_btn1.toggled.connect(self.on_fullscreen_toggled)
+        self.max_btn1.setFixedSize(30, 30)
 
         # 初始化弹出组件
         self.speed_menu = SpeedMenu(self.speed_btn, self.on_speed_change)
@@ -98,6 +104,7 @@ class VideoPlayer(QWidget):
         h_layout.addWidget(self.speed_btn)
         h_layout.addWidget(self.vol_btn)
         h_layout.addWidget(self.max_btn)
+        h_layout.addWidget(self.max_btn1)
         h_layout.setSpacing(3)
 
         # 信号连接
@@ -110,8 +117,12 @@ class VideoPlayer(QWidget):
     # 核心控制逻辑
     # ==========================================================
 
-    def on_fullscreen_clicked(self):
-        self.request_fullscreen.emit(self)
+    def on_fullscreen_toggled(self,b):
+        self.request_fullscreen.emit(self,self.full_mask())
+
+
+    def full_mask(self):
+        return self.max_btn.isChecked() | (self.max_btn1.isChecked() << 1)
 
 
     def update_ui_state(self):
