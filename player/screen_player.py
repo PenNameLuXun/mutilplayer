@@ -7,6 +7,8 @@ from PySide6.QtGui import QGuiApplication
 import subprocess
 from .video_player import VideoPlayer
 
+from .frameless_window import FramelessDraggableWindow
+
 
 FLAG_FULL_WINDOW = 0b0001  # 1
 FLAG_FULL_SCREEN = 0b0010  # 2
@@ -54,12 +56,14 @@ def probe_resolution(path):
     return get_video_size(path)
     return int(w), int(h)
 
-class ScreenPlayer(QWidget):
+class ScreenPlayer(FramelessDraggableWindow):
     def __init__(self, screen, videos, hwaccel):
         super().__init__()
 
         self.setWindowState(Qt.WindowNoState)
         self.setAttribute(Qt.WA_NativeWindow, True)
+
+        self.setWindowFlags(Qt.Window |Qt.FramelessWindowHint |Qt.WindowDoesNotAcceptFocus)
 
         self.panels =[]
 
@@ -68,6 +72,7 @@ class ScreenPlayer(QWidget):
         self.screen_h = screen.height
 
         self.full_state = False
+        self.is_full = False
 
         self._old_flags = None
         self._old_geometry = None
@@ -167,10 +172,11 @@ class ScreenPlayer(QWidget):
             self.enter_pseudo_fullscreen()
 
     def toggle_panel_fullscreen(self, panel: VideoPlayer,full_type:int):
-        self.full_panel = panel
+        #self.full_panel = panel
         self.full_type  = full_type
         print("full_type:",full_type)
         if self.full_type & FLAG_FULL_WINDOW:
+            self.full_panel = panel
             # 隐藏其他 panel
             for p in self.panels:
                 if p is not panel:
@@ -181,7 +187,6 @@ class ScreenPlayer(QWidget):
             panel.raise_()
             panel.setFocus()
         else:
-            panel = self.full_panel
             self.layout.removeWidget(panel)
 
             r, c = self.panel_positions[panel]
@@ -190,7 +195,8 @@ class ScreenPlayer(QWidget):
             for p in self.panels:
                 p.show()
 
-        self.toggle_full(self.full_type & FLAG_FULL_SCREEN)
+        #if panel == self.full_panel or not self.full_panel:
+        self.toggle_full(self.full_type | FLAG_FULL_SCREEN)
 
 
     # def enter_panel_fullscreen(self, panel: VideoPlayer,full_type:int):
@@ -236,8 +242,8 @@ class ScreenPlayer(QWidget):
 
 
     def enter_pseudo_fullscreen(self):
-        if self.windowFlags() & Qt.FramelessWindowHint:
-            return
+        if self.is_full:
+             return
         
         screen = self.windowHandle().screen()
 
@@ -248,7 +254,8 @@ class ScreenPlayer(QWidget):
         self._old_flags = self.windowFlags()
 
         # 1️⃣ 确保是普通窗口状态
-        self.setWindowState(Qt.WindowNoState)
+        #self.setWindowState(Qt.WindowNoState)
+        #self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
 
         # 2️⃣ 先 show 一次（非常关键）
         self.show()
@@ -258,27 +265,35 @@ class ScreenPlayer(QWidget):
             geo = screen.geometry()
 
             # 去边框
-            self.setWindowFlag(Qt.FramelessWindowHint, True)
+            #self.setWindowFlag(Qt.FramelessWindowHint, True)
             self.show()
 
             # ⚠️ 分两步，避免驱动误判
-            # self.move(geo.topLeft())
-            # self.resize(geo.size())
-            self.setWindowState(Qt.WindowMaximized)
+            #self.move(geo.topLeft())
+            #self.resize(geo.size())
+            
+            #self.setGeometry(geo.adjusted(0,0,0,0))
+            self.setGeometry(geo)
+            #self.setWindowFlag(Qt.WindowStaysOnTopHint)
+            #self.setWindowState(Qt.WindowMaximized)
+            
+            self.is_full = True
 
         QTimer.singleShot(20, apply_fullscreen)
 
     def exit_pseudo_fullscreen(self):
-        if not (self.windowFlags() & Qt.FramelessWindowHint):
+        if not self.is_full:
             return
         
-        self.setWindowFlag(Qt.FramelessWindowHint, False)
+        #self.setWindowFlag(Qt.FramelessWindowHint, False)  WindowStaysOnTopHint
         self.setWindowState(Qt.WindowNoState)
 
         if hasattr(self, "_old_geometry"):
             self.setGeometry(self._old_geometry)
 
+        self.is_full = False
         self.show()
+        
 
 
 

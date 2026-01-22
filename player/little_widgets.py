@@ -3,6 +3,35 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QSlider, QLabel, QFrame)
 from PySide6.QtCore import Qt, QPoint, QTimer,QEvent
 
+
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtWidgets import QWidget
+
+class FramelessDraggableWindow(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._dragging = False
+        self._drag_pos = QPoint()
+        self._window_pos = QPoint()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._dragging = True
+            self._drag_pos = event.globalPosition().toPoint()
+            self._window_pos = self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            delta = event.globalPosition().toPoint() - self._drag_pos
+            self.move(self._window_pos + delta)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._dragging = False
+        event.accept()
+
+
 # ==========================================================
 # 1. 自定义弹出层基类
 # ==========================================================
