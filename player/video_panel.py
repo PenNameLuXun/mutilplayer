@@ -24,7 +24,7 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         super().__init__(parent)
         QOpenGLExtraFunctions.__init__(self)
 
-        self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
+        #self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
 
         self.cfg = config
         print("self.cfg:",self.cfg,hasattr(self.cfg,"play_sections"))

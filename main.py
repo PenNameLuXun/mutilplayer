@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 from screeninfo import get_monitors
 from player.screen_player import ScreenPlayer
+from PySide6.QtCore import Qt
 
 def main():
     # 1. 解析命令行参数
@@ -36,6 +37,7 @@ def main():
         return
 
     # 3. 初始化 Qt 环境
+    #QApplication.setAttribute(Qt.AA_NativeWindows)
     app = QApplication(sys.argv)
 
     # 处理 Ctrl+C

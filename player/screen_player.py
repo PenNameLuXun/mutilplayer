@@ -8,6 +8,7 @@ import subprocess
 from .video_player import VideoPlayer
 
 from .frameless_window import FramelessDraggableWindow
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 
 
 FLAG_FULL_WINDOW = 0b0001  # 1
@@ -60,10 +61,7 @@ class ScreenPlayer(FramelessDraggableWindow):
     def __init__(self, screen, videos, hwaccel):
         super().__init__()
 
-        self.setWindowState(Qt.WindowNoState)
-        self.setAttribute(Qt.WA_NativeWindow, True)
-
-        self.setWindowFlags(Qt.Window |Qt.FramelessWindowHint |Qt.WindowDoesNotAcceptFocus)
+        
 
         self.panels =[]
 
