@@ -24,7 +24,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         super().__init__(parent)
         QOpenGLExtraFunctions.__init__(self)
 
-        #self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
+        self.setAttribute(Qt.WA_NativeWindow)
+        # self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
 
         self.cfg = config
         print("self.cfg:",self.cfg,hasattr(self.cfg,"play_sections"))
@@ -255,6 +256,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         print("VideoPanel threads stopped.")
 
     def initializeGL(self):
+
+        print("initializeGL........")
         # 即使改用 GL，保留此行以防 Qt 内部需要
         self.initializeOpenGLFunctions()
 
@@ -272,11 +275,19 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         GL.glClearColor(0.0, 0.0, 0.0, 1.0)
         self._initialized = True
 
+    def resizeGL(self, w, h):
+        # 当窗口大小改变时，立即触发一次重绘
+        # 确保 FBO 重建后立刻有内容填充，而不是等待渲染线程的信号
+        # if self._initialized and self._frame is not None:
+        #     self.update() 
+        super().resizeGL(w, h)
+
     def paintGL(self):
         if not self._initialized or self._texture_id is None:
             return
 
-        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+        #GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT)
 
         with self._lock:
             if self._frame is None: return

@@ -8,7 +8,14 @@ from PySide6.QtCore import QTimer
 from screeninfo import get_monitors
 from player.screen_player import ScreenPlayer
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication, QSurfaceFormat
 
+from player.player_window import VideoGLWindow,GLWindow,MultiVideoWindow
+from player.video_decoder import VideoPlayerManager,PyAVDecoder
+
+
+MY_FLAG = 1
+MY_FLAGE_COUNT = 9
 def main():
     # 1. 解析命令行参数
     parser = argparse.ArgumentParser(description="Multi-screen Video Player")
@@ -38,6 +45,10 @@ def main():
 
     # 3. 初始化 Qt 环境
     #QApplication.setAttribute(Qt.AA_NativeWindows)
+    # 强制启用软件/硬件合成优化
+    QApplication.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
+    # 减少渲染层级冲突
+    #QApplication.setAttribute(Qt.AA_NativeWindows)
     app = QApplication(sys.argv)
 
     # 处理 Ctrl+C
@@ -58,26 +69,74 @@ def main():
 
     max_id = 0
     #print("max_id = ",max_id)
-    for sid, files in cfg["screens"].items():
-        idx = int(sid)
-        
-        if idx < 0 or idx >= len(monitors):
-            print(f"[WARN] Screen index {idx} not available, skip.")
-            #continue
-            idx = max_id
-        max_id = idx
+    
 
-        player = ScreenPlayer(monitors[idx], files, cfg.get("hwaccel"))
-        player.show()
-        players.append(player)
+
+
+
+
+    if MY_FLAG==1:
+        fmt = QSurfaceFormat()
+        fmt.setDepthBufferSize(24)
+        fmt.setVersion(3, 3)  # 请求 OpenGL 3.3 核心
+        fmt.setProfile(QSurfaceFormat.CoreProfile)
+        fmt.setRenderableType(QSurfaceFormat.OpenGL)
+        QSurfaceFormat.setDefaultFormat(fmt)
+        # pw = GLWindow()
+        # pw.show()
+        #pw.showFullScreen()
+
+        pw1 = MultiVideoWindow(MY_FLAGE_COUNT)
+        pw1.resize(800, 600)
+        pw1.show()
+        #pw1.showFullScreen()
+
+        # 2. 创建解码管理器 (配置最大线程数)
+        manager = VideoPlayerManager(pw1, max_threads=9)
+
+
+    count_file = 0
+    for sid, files in cfg["screens"].items():
+        
+
+        #break
+
+        if MY_FLAG==1:
+            for video in files["video"]:
+                #print("video:",video)
+                path = video["path"]
+                if count_file < MY_FLAGE_COUNT:
+                    manager.add_video(count_file,path)
+                count_file = count_file+1
+
+        else:
+            idx = int(sid)
+        
+            if idx < 0 or idx >= len(monitors):
+                print(f"[WARN] Screen index {idx} not available, skip.")
+                #continue
+                idx = max_id
+            max_id = idx
+
+            player = ScreenPlayer(monitors[idx], files, cfg.get("hwaccel"))
+            player.show()
+            players.append(player)
+
+
 
     # 5. 运行并清理
     exit_code = app.exec()
     
     print("Shutting down players...")
-    for p in players:
-        if hasattr(p, 'stop'):
-            p.stop()
+
+
+    if MY_FLAG==1:
+        manager.stop_all()
+    else:
+        for p in players:
+            if hasattr(p, 'stop'):
+                p.stop()
+    
 
     sys.exit(exit_code)
 

@@ -1,8 +1,8 @@
 import math
 import av
 
-from PySide6.QtCore import Qt, Signal,QTimer,QPoint
-from PySide6.QtWidgets import QWidget, QGridLayout,QPushButton
+from PySide6.QtCore import Qt, Signal,QTimer,QPoint,QRect
+from PySide6.QtWidgets import QWidget, QGridLayout,QPushButton,QSizePolicy,QHBoxLayout,QSpacerItem
 from PySide6.QtGui import QGuiApplication
 import subprocess
 from .video_player import VideoPlayer
@@ -61,8 +61,6 @@ class ScreenPlayer(FramelessDraggableWindow):
     def __init__(self, screen, videos, hwaccel):
         super().__init__()
 
-        
-
         self.panels =[]
 
         # 屏幕尺寸
@@ -91,7 +89,34 @@ class ScreenPlayer(FramelessDraggableWindow):
         layout.setSpacing(0)
         layout.setVerticalSpacing(0)
         layout.setHorizontalSpacing(0)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(9, 9, 9, 9)
+
+        self.title_bar = QWidget(self)
+        self.title_bar.setFixedHeight(40)
+        self.title_bar.setSizePolicy(QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed)
+        self.layout.addWidget(self.title_bar,0,0,1,-1)
+
+
+        title_bar_layout = QHBoxLayout(self.title_bar)
+        self.title_bar.setLayout(title_bar_layout)
+
+        self.min_btn = QPushButton("-",self)
+        self.min_btn.setCheckable(True)
+        self.min_btn.toggled.connect(self.min_window)
+        self.min_btn.setFixedSize(30, 30)
+
+        self.max_btn1 = QPushButton("[]",self)
+        self.max_btn1.setCheckable(True)
+        self.max_btn1.toggled.connect(self.toggle_full)
+        self.max_btn1.setFixedSize(30, 30)
+        
+
+        title_bar_layout.addSpacerItem(QSpacerItem(1,1,QSizePolicy.Policy.Expanding,QSizePolicy.Policy.Fixed))
+        title_bar_layout.addWidget(self.max_btn1)
+        title_bar_layout.addWidget(self.min_btn)
+
+        title_bar_layout.setContentsMargins(0,0,0,0)
+
 
         # 读取所有视频分辨率
         video_infos = []
@@ -147,13 +172,13 @@ class ScreenPlayer(FramelessDraggableWindow):
 
         # 按最佳布局放置视频
         for i, info in enumerate(video_infos):
-            r = i // cols
+            r = i // cols+ 1
             c = i % cols
             panel = VideoPlayer(info["path"],info["config"], hwaccel,self)
 
             panel.request_fullscreen.connect(self.toggle_panel_fullscreen)
 
-            layout.addWidget(panel, r, c)
+            layout.addWidget(panel, r , c)
             self.panels.append(panel)
             self.panel_positions[panel] = (r, c)
 
@@ -163,77 +188,49 @@ class ScreenPlayer(FramelessDraggableWindow):
 
     def toggle_full(self,do_full=False):
         self.full_state = do_full
-        print("self.full_state:",self.full_state)
         if not self.full_state:
             self.exit_pseudo_fullscreen()
         else:
             self.enter_pseudo_fullscreen()
 
+    def min_window(self):
+        self.showMinimized()
+
     def toggle_panel_fullscreen(self, panel: VideoPlayer,full_type:int):
-        #self.full_panel = panel
         self.full_type  = full_type
         print("full_type:",full_type)
-        if self.full_type & FLAG_FULL_WINDOW:
-            self.full_panel = panel
-            # 隐藏其他 panel
-            for p in self.panels:
-                if p is not panel:
-                    p.hide()
-            # 移除并重新加入，占满 grid
-            self.layout.removeWidget(panel)
-            self.layout.addWidget(panel, 0, 0, 1, -1)
-            panel.raise_()
-            panel.setFocus()
-        else:
-            self.layout.removeWidget(panel)
+        try:
+            if self.full_type & FLAG_FULL_WINDOW:
+                self.full_panel = panel
+                # 隐藏其他 panel
+                for p in self.panels:
+                    if p is not panel:
+                        p.hide()
+                # 移除并重新加入，占满 grid
+                self.layout.removeWidget(panel)
+                self.layout.addWidget(panel, 1, 0, 1, -1)
+                panel.raise_()
+                #panel.setFocus()
+            else:
+                self.layout.removeWidget(panel)
 
-            r, c = self.panel_positions[panel]
-            self.layout.addWidget(panel, r, c)
+                r, c = self.panel_positions[panel]
+                self.layout.addWidget(panel, r, c)
 
-            for p in self.panels:
-                p.show()
+                for p in self.panels:
+                    p.show()
 
-        #if panel == self.full_panel or not self.full_panel:
-        self.toggle_full(self.full_type | FLAG_FULL_SCREEN)
+            #if panel == self.full_panel or not self.full_panel:
+            #self.toggle_full(self.full_type & FLAG_FULL_SCREEN)
+        finally:
+            pass
+            # 布局计算完成后，给一点点缓冲时间再恢复显示
+            #QTimer.singleShot(100, lambda: self.setUpdatesEnabled(True))
 
-
-    # def enter_panel_fullscreen(self, panel: VideoPlayer,full_type:int):
-    #     self.full_panel = panel
-    #     self.full_type = full_type
-    #     if self.full_type == 0:
-    #         # 隐藏其他 panel
-    #         for p in self.panels:
-    #             if p is not panel:
-    #                 p.hide()
-    #         # 移除并重新加入，占满 grid
-    #         self.layout.removeWidget(panel)
-    #         self.layout.addWidget(panel, 0, 0, 1, -1)
-    #         panel.raise_()
-    #         panel.setFocus()
-    #     elif self.full_type==1:
-    #         self.toggle_full(True)
-    #     elif self.full_type==2:
-    #         self.toggle_full(False)
-
-    # def exit_panel_fullscreen(self):
-    #     panel = self.full_panel
-    #     self.layout.removeWidget(panel)
-
-    #     r, c = self.panel_positions[panel]
-    #     self.layout.addWidget(panel, r, c)
-
-    #     for p in self.panels:
-    #         p.show()
-
-    #     self.full_panel = None
-        
-
-    #     if self.full_type == 1:
-    #         self.toggle_full(False)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape and self.full_panel:
-            self.toggle_panel_fullscreen(self.full_panel,self.full_type&(~FLAG_FULL_SCREEN))
+            self.toggle_full(False)
             event.accept()
             return
         super().keyPressEvent(event)
@@ -251,29 +248,15 @@ class ScreenPlayer(FramelessDraggableWindow):
         self._old_geometry = self.geometry()
         self._old_flags = self.windowFlags()
 
-        # 1️⃣ 确保是普通窗口状态
-        #self.setWindowState(Qt.WindowNoState)
-        #self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-
         # 2️⃣ 先 show 一次（非常关键）
         self.show()
 
         # 3️⃣ 延迟到事件循环后再操作 geometry
         def apply_fullscreen():
             geo = screen.geometry()
-
-            # 去边框
-            #self.setWindowFlag(Qt.FramelessWindowHint, True)
             self.show()
 
-            # ⚠️ 分两步，避免驱动误判
-            #self.move(geo.topLeft())
-            #self.resize(geo.size())
-            
-            #self.setGeometry(geo.adjusted(0,0,0,0))
-            self.setGeometry(geo)
-            #self.setWindowFlag(Qt.WindowStaysOnTopHint)
-            #self.setWindowState(Qt.WindowMaximized)
+            self.setGeometry(geo.adjusted(-9,-49,9,9))
             
             self.is_full = True
 
@@ -283,7 +266,6 @@ class ScreenPlayer(FramelessDraggableWindow):
         if not self.is_full:
             return
         
-        #self.setWindowFlag(Qt.FramelessWindowHint, False)  WindowStaysOnTopHint
         self.setWindowState(Qt.WindowNoState)
 
         if hasattr(self, "_old_geometry"):
@@ -291,7 +273,13 @@ class ScreenPlayer(FramelessDraggableWindow):
 
         self.is_full = False
         self.show()
-        
+
+
+    def global_R(self,w:QWidget):
+        return QRect(w.mapToGlobal(QPoint(0,0)),w.size())
+    
+    def drag_test(self,g_pos):
+        return self.global_R(self.title_bar).contains(g_pos) and not self.global_R(self.max_btn1).contains(g_pos) and not self.global_R(self.min_btn).contains(g_pos)    
 
 
 

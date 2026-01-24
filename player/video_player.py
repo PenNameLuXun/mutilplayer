@@ -16,7 +16,7 @@ class VideoPlayer(QWidget):
     request_fullscreen = Signal(object,int)  # 把自己传出去
     def __init__(self, path, config, hwaccel=None,parent=None):
         super().__init__(parent)
-        self.setMouseTracking(True) # 开启鼠标追踪
+        #self.setMouseTracking(True) # 开启鼠标追踪
         self.setContentsMargins(0, 0, 0, 0)
         
         # 1. 初始化视频渲染组件
@@ -25,6 +25,8 @@ class VideoPlayer(QWidget):
         
         # 2. 创建悬浮控制栏容器
         self.control_widget = QFrame(self)
+        self.control_widget.setAttribute(Qt.WA_NativeWindow, True)
+        #self.control_widget.setWindowFlag(Qt.Tool)
 
         # 确保小部件可以接受键盘焦点
         self.setFocusPolicy(Qt.StrongFocus)
@@ -91,6 +93,8 @@ class VideoPlayer(QWidget):
         self.max_btn1.setCheckable(True)
         self.max_btn1.toggled.connect(self.on_fullscreen_toggled)
         self.max_btn1.setFixedSize(30, 30)
+
+        self.max_btn1.hide()
 
         # 初始化弹出组件
         self.speed_menu = SpeedMenu(self.speed_btn, self.on_speed_change)
@@ -238,10 +242,13 @@ class VideoPlayer(QWidget):
 
     def enterEvent(self, event):
         """鼠标进入显示控制栏"""
-        self.control_widget.show()
+        print("enterEvent......")
         self.control_widget.raise_()
+        self.control_widget.show()
+        super().enterEvent(event)
 
     def leaveEvent(self, event):
+        print("leaveEvent......")
         # 1. 正在拖动进度条时不隐藏
         if self.is_dragging:
             return
@@ -262,6 +269,7 @@ class VideoPlayer(QWidget):
             return
 
         self.control_widget.hide()
+        super().leaveEvent(event)
 
     def show_popup(self, menu, target_widget):
         """计算位置并显示弹出层"""
