@@ -60,14 +60,16 @@ WS_EX_TOOLWINDOW = 0x00000080
 
 
 class FramelessDraggableWindow(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None,flag = 0):
         super().__init__(parent)
 
         self._fullscreen = False
         self._normalGeometry = None
 
         #self.setWindowState(Qt.WindowNoState)
-        self.setAttribute(Qt.WA_NativeWindow, True)
+        if flag == 0:
+            self.setAttribute(Qt.WA_NativeWindow, True)
+            
         #self.setWindowFlags(Qt.Window |Qt.FramelessWindowHint |Qt.WindowDoesNotAcceptFocus)
         self.setWindowFlags(Qt.Window |Qt.FramelessWindowHint)
         #self.setAttribute(Qt.WA_ShowWithoutActivating, True)

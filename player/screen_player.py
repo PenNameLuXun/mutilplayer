@@ -58,8 +58,8 @@ def probe_resolution(path):
     return int(w), int(h)
 
 class ScreenPlayer(FramelessDraggableWindow):
-    def __init__(self, screen, videos, hwaccel):
-        super().__init__()
+    def __init__(self, screen, videos, hwaccel,flag = 0):
+        super().__init__(None,flag)
 
         self.panels =[]
 
@@ -174,7 +174,7 @@ class ScreenPlayer(FramelessDraggableWindow):
         for i, info in enumerate(video_infos):
             r = i // cols+ 1
             c = i % cols
-            panel = VideoPlayer(info["path"],info["config"], hwaccel,self)
+            panel = VideoPlayer(info["path"],info["config"], hwaccel,self,flag)
 
             panel.request_fullscreen.connect(self.toggle_panel_fullscreen)
 

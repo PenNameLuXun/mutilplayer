@@ -14,7 +14,7 @@ from player.player_window import VideoGLWindow,GLWindow,MultiVideoWindow
 from player.video_decoder import VideoPlayerManager,PyAVDecoder
 
 
-MY_FLAG = 1
+MY_FLAG = 0
 MY_FLAGE_COUNT = 9
 def main():
     # 1. 解析命令行参数
@@ -49,10 +49,16 @@ def main():
     QApplication.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
     # 减少渲染层级冲突
     #QApplication.setAttribute(Qt.AA_NativeWindows)
+
+    # 强制使用桌面 OpenGL 驱动，避免某些显卡切到独占模式
+    # 强制开启软硬件合色，防止 DWM 挂起
+    QApplication.setAttribute(Qt.AA_UseDesktopOpenGL) 
+    # 必须在 QApplication 实例化前设置
+    QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
 
     # 处理 Ctrl+C
-    signal.signal(signal.SIGINT, lambda *args: app.quit())
+    signal.signal(signal.SIGINT, lambda *args: app.quit()) 
 
     # 定时器确保 Python 能捕获信号
     timer = QTimer()
@@ -69,10 +75,6 @@ def main():
 
     max_id = 0
     #print("max_id = ",max_id)
-    
-
-
-
 
 
     if MY_FLAG==1:
@@ -82,43 +84,42 @@ def main():
         fmt.setProfile(QSurfaceFormat.CoreProfile)
         fmt.setRenderableType(QSurfaceFormat.OpenGL)
         QSurfaceFormat.setDefaultFormat(fmt)
-        # pw = GLWindow()
-        # pw.show()
-        #pw.showFullScreen()
-
         pw1 = MultiVideoWindow(MY_FLAGE_COUNT)
         pw1.resize(800, 600)
         pw1.show()
-        #pw1.showFullScreen()
+        #QTimer.singleShot(3000,lambda:pw1.toggle_player_fullscreen())
+        
 
         # 2. 创建解码管理器 (配置最大线程数)
         manager = VideoPlayerManager(pw1, max_threads=9)
+        pw1.sig_stop.connect(manager.stop_all)
 
 
     count_file = 0
     for sid, files in cfg["screens"].items():
-        
+        flag = 0
+        #print("files:",files)
+        if "flag" in files:
+            flag = files["flag"]
 
-        #break
 
-        if MY_FLAG==1:
-            for video in files["video"]:
-                #print("video:",video)
-                path = video["path"]
-                if count_file < MY_FLAGE_COUNT:
-                    manager.add_video(count_file,path)
-                count_file = count_file+1
+        for video in files["video"]:
+            path = video["path"]
+
+        if MY_FLAG == 1:
+            if count_file < MY_FLAGE_COUNT:
+                manager.add_video(count_file,path)
+            count_file = count_file+1
 
         else:
             idx = int(sid)
-        
             if idx < 0 or idx >= len(monitors):
                 print(f"[WARN] Screen index {idx} not available, skip.")
                 #continue
                 idx = max_id
             max_id = idx
 
-            player = ScreenPlayer(monitors[idx], files, cfg.get("hwaccel"))
+            player = ScreenPlayer(monitors[idx], files, cfg.get("hwaccel"),flag)
             player.show()
             players.append(player)
 

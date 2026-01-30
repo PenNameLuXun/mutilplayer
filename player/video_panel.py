@@ -20,11 +20,12 @@ from .video_decoder import VideoDecoder
 
 class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
     request_update = Signal()
-    def __init__(self, path, config,hwaccel, parent=None):
+    def __init__(self, path, config,hwaccel, parent=None,flag = 0):
         super().__init__(parent)
         QOpenGLExtraFunctions.__init__(self)
 
-        self.setAttribute(Qt.WA_NativeWindow)
+        if flag==0:
+            self.setAttribute(Qt.WA_NativeWindow)
         # self.setUpdateBehavior(QOpenGLWidget.NoPartialUpdate)
 
         self.cfg = config

@@ -14,18 +14,21 @@ from .little_widgets import SpeedMenu,VolumeMenu
 
 class VideoPlayer(QWidget):
     request_fullscreen = Signal(object,int)  # 把自己传出去
-    def __init__(self, path, config, hwaccel=None,parent=None):
+    def __init__(self, path, config, hwaccel=None,parent=None,flag = 0):
         super().__init__(parent)
         #self.setMouseTracking(True) # 开启鼠标追踪
         self.setContentsMargins(0, 0, 0, 0)
         
         # 1. 初始化视频渲染组件
-        self.video_panel = VideoPanel(path, config, hwaccel)
+        self.video_panel = VideoPanel(path, config, hwaccel,self,flag)
         self.duration = float(self.video_panel.decoder.duration)
         
         # 2. 创建悬浮控制栏容器
         self.control_widget = QFrame(self)
-        self.control_widget.setAttribute(Qt.WA_NativeWindow, True)
+
+        if flag == 0:
+            self.control_widget.setAttribute(Qt.WA_NativeWindow, True)
+
         #self.control_widget.setWindowFlag(Qt.Tool)
 
         # 确保小部件可以接受键盘焦点
@@ -242,13 +245,13 @@ class VideoPlayer(QWidget):
 
     def enterEvent(self, event):
         """鼠标进入显示控制栏"""
-        print("enterEvent......")
+        #print("enterEvent......")
         self.control_widget.raise_()
         self.control_widget.show()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        print("leaveEvent......")
+        #print("leaveEvent......")
         # 1. 正在拖动进度条时不隐藏
         if self.is_dragging:
             return

@@ -7,7 +7,7 @@ from PySide6.QtOpenGL import QOpenGLWindow
 from PySide6.QtCore import Qt, QRect, QPoint
 
 from PySide6.QtOpenGL import QOpenGLWindow,QOpenGLShader, QOpenGLShaderProgram
-from PySide6.QtGui import QMatrix4x4, QVector3D
+from PySide6.QtGui import QMatrix4x4, QVector3D,QWindow
 from OpenGL.GL import *
 import numpy as np
 import os
@@ -137,8 +137,15 @@ class VideoGLWindow(QOpenGLWindow):
     # 【关键修改 1】定义信号：参数为 (图像数据bytes, 宽, 高, 格式)
     sig_frame_ready = Signal(int,bytes, int, int, str)
 
+    sig_stop = Signal()
+
     def __init__(self):
         super().__init__()
+
+        #self.setAttribute(Qt.WA_NativeWindow, True)
+        #self.setWindowFlags(Qt.Window |Qt.FramelessWindowHint |Qt.WindowDoesNotAcceptFocus)
+        self.setFlags(Qt.Window | Qt.FramelessWindowHint)
+
         self.program = None
         self.texture_id = None
         self.vbo = None
@@ -338,6 +345,17 @@ class VideoGLWindow(QOpenGLWindow):
         # 触发 paintGL 进行绘制
         self.update()
 
+    def toggle_player_fullscreen(self):
+        if self.visibility() != QWindow.FullScreen:
+            # 获取当前屏幕的硬件尺寸
+            screen = self.screen()
+            self.setFlags(Qt.Window | Qt.FramelessWindowHint)
+            self.setGeometry(screen.geometry())
+            self.show()
+        else:
+            self.setFlags(Qt.Window) # 还原边框
+            self.showNormal()
+
 class MultiVideoWindow(VideoGLWindow): # 继承你之前的类
     def __init__(self, max_views=4):
         super().__init__()
@@ -351,6 +369,8 @@ class MultiVideoWindow(VideoGLWindow): # 继承你之前的类
         self.video_height = 0
 
     def initializeGL(self):
+
+        print("MultiVideoWindow initializeGL....")
         super().initializeGL()
         # 初始化时预生成多个纹理ID
         for i in range(self.max_views):
@@ -363,98 +383,176 @@ class MultiVideoWindow(VideoGLWindow): # 继承你之前的类
 
     @Slot(int, bytes, int, int, str)
     def upload_texture_slot(self, view_id, data_bytes, width, height, fmt):
-        if view_id not in self.textures:
-            return
+        # if view_id not in self.textures:
+        #     return
 
-        # 只缓存
-        self.frame_info[view_id] = (True, width, height, data_bytes, fmt)
+        # # 只缓存
+        # self.frame_info[view_id] = (True, width, height, data_bytes, fmt)
 
-        # 请求重绘
+        # # 请求重绘
+        # self.update()
+        if view_id not in self.textures: return
+
+        self.makeCurrent() # 必须在操作 GL 前调用
+        
+        # 1. 获取该通道缓存的状态
+        # 我们需要存储宽高来判断是否需要用 SubImage2D
+        valid, old_w, old_h, _, old_fmt = self.frame_info.get(view_id, (False, 0, 0, None, "RGB"))
+        
+        glBindTexture(GL_TEXTURE_2D, self.textures[view_id])
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+
+        gl_fmt = GL_BGR if fmt == "BGR" else GL_RGB
+
+        # 2. 性能分水岭：如果是第一次或分辨率变了，执行 glTexImage2D (买新房)
+        if not valid or old_w != width or old_h != height:
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, gl_fmt, GL_UNSIGNED_BYTE, data_bytes)
+        else:
+            # 3. 绝大多数情况下执行 glTexSubImage2D (换家具)，效率极高
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, gl_fmt, GL_UNSIGNED_BYTE, data_bytes)
+
+        # 4. 存储状态，注意：这里不再把 data_bytes 存进内存字典，避免内存爆涨
+        # 我们只存宽高给 Shader 用
+        self.frame_info[view_id] = (True, width, height, None, fmt)
+        
         self.update()
 
     def paintGL(self):
-        glClearColor(0, 0, 0, 1)
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        # glClearColor(0, 0, 0, 1)
+        # glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        self.program.bind()
+        # self.program.bind()
 
-        # cam = QMatrix4x4()
-        # cam.lookAt(self.eye, QVector3D(0,0,0), QVector3D(0,2,0))
-        # world = QMatrix4x4()
+        # # cam = QMatrix4x4()
+        # # cam.lookAt(self.eye, QVector3D(0,0,0), QVector3D(0,2,0))
+        # # world = QMatrix4x4()
 
-        # self.program.setUniformValue(self.cam_matrix_loc, cam)
-        # self.program.setUniformValue(self.world_matrix_loc, world)
+        # # self.program.setUniformValue(self.cam_matrix_loc, cam)
+        # # self.program.setUniformValue(self.world_matrix_loc, world)
 
-        glBindVertexArray(self.vao)
+        # glBindVertexArray(self.vao)
 
-        # 2. 计算网格
-        cols = 2 if self.max_views > 1 else 1
-        rows = (self.max_views + cols - 1) // cols
+        # # 2. 计算网格
+        # cols = 2 if self.max_views > 1 else 1
+        # rows = (self.max_views + cols - 1) // cols
 
 
         
 
 
-        # win_w = self.width()
-        # win_h = self.height()
-        # cell_w = win_w // cols
-        # cell_h = win_h // rows
+        # # win_w = self.width()
+        # # win_h = self.height()
+        # # cell_w = win_w // cols
+        # # cell_h = win_h // rows
 
-        current_cell_num = self.max_views
-
-
-        dpr = self.devicePixelRatio()
-        fb_w = int(self.width() * dpr)
-        fb_h = int(self.height() * dpr)
+        # current_cell_num = self.max_views
 
 
-
-        # 一行多少个
-        cols:int = 3
-
-        #一列多少个 整数
-        col_n =  (current_cell_num + cols - 1) // cols
-
-
-        cell_w = fb_w/cols
-        cell_h = fb_h/col_n
-
-        for i in range(self.max_views):
-            valid, vw, vh, data, fmt = self.frame_info.get(i, (False,0,0,None,None))
-            if not valid:
-                continue
-
-            cell_i = i//cols
-
-            #grid_y = cell_i*cell_h
-            grid_y = (rows - 1 - cell_i) * cell_h   # OpenGL 左下角
-            grid_x = (i%cols)*cell_w
+        # dpr = self.devicePixelRatio()
+        # fb_w = int(self.width() * dpr)
+        # fb_h = int(self.height() * dpr)
 
 
 
-            # ---- 这里就是 glViewport 的正确位置 ----
-            self.program.setUniformValue("videoSize", float(vw), float(vh))
-            self.program.setUniformValue("widgetSize", float(cell_w), float(cell_h))
-            # if i == 2:
-            #     print("cell:",cell_i,grid_x,grid_y,cell_w,cell_h,self.size())
-            glViewport(int(grid_x), int(grid_y), int(cell_w), int(cell_h))
+        # # 一行多少个
+        # cols:int = 3
+
+        # #一列多少个 整数
+        # col_n =  (current_cell_num + cols - 1) // cols
+
+
+        # cell_w = fb_w/cols
+        # cell_h = fb_h/col_n
+
+        # for i in range(self.max_views):
+        #     valid, vw, vh, data, fmt = self.frame_info.get(i, (False,0,0,None,None))
+        #     if not valid:
+        #         continue
+
+        #     cell_i = i//cols
+
+        #     #grid_y = cell_i*cell_h
+        #     grid_y = (col_n - 1 - cell_i) * cell_h   # OpenGL 左下角
+        #     grid_x = (i%cols)*cell_w
+
+
+
+        #     # ---- 这里就是 glViewport 的正确位置 ----
+        #     self.program.setUniformValue("videoSize", float(vw), float(vh))
+        #     self.program.setUniformValue("widgetSize", float(cell_w), float(cell_h))
+        #     # if i == 2:
+        #     #     print("cell:",cell_i,grid_x,grid_y,cell_w,cell_h,self.size())
+        #     glViewport(int(grid_x), int(grid_y), int(cell_w), int(cell_h))
 
             
+        #     glActiveTexture(GL_TEXTURE0)
+        #     glBindTexture(GL_TEXTURE_2D, self.textures[i])
+
+        #     gl_fmt = GL_BGR if fmt == "BGR" else GL_RGB
+
+        #     glTexImage2D(
+        #         GL_TEXTURE_2D, 0, GL_RGB,
+        #         vw, vh, 0,
+        #         gl_fmt, GL_UNSIGNED_BYTE, data
+        #     )
+
+        #     # 设置 viewport + draw
+        #     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
+
+        # glBindVertexArray(0)
+        # self.program.release()
+
+        glClearColor(0, 0, 0, 1)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+        self.program.bind()
+        glBindVertexArray(self.vao)
+
+        dpr = self.devicePixelRatio()
+        fb_w, fb_h = int(self.width() * dpr), int(self.height() * dpr)
+
+        cols = 3
+        col_n = (self.max_views + cols - 1) // cols
+        cell_w, cell_h = fb_w / cols, fb_h / col_n
+
+        for i in range(self.max_views):
+            # 从缓存读取该画面的属性
+            valid, vw, vh, _, _ = self.frame_info.get(i, (False, 0, 0, None, None))
+            if not valid: continue
+
+            # 计算网格坐标 (OpenGL y轴从底向上)
+            row_idx = i // cols
+            grid_y = (col_n - 1 - row_idx) * cell_h 
+            grid_x = (i % cols) * cell_w
+
+            # --- 设置 Shader 需要的三个关键 Uniform ---
+            # 1. 视口大小（当前格子的像素宽和高）
+            glViewport(int(grid_x), int(grid_y), int(cell_w), int(cell_h))
+            
+            # 2. 传递给你的 Shader 进行比例计算
+            self.program.setUniformValue("videoSize", float(vw), float(vh))
+            self.program.setUniformValue("widgetSize", float(cell_w), float(cell_h))
+
+            # 3. 纹理绑定
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, self.textures[i])
+            #self.program.setUniformValue("tex", 0)
 
-            gl_fmt = GL_BGR if fmt == "BGR" else GL_RGB
-
-            glTexImage2D(
-                GL_TEXTURE_2D, 0, GL_RGB,
-                vw, vh, 0,
-                gl_fmt, GL_UNSIGNED_BYTE, data
-            )
-
-            # 设置 viewport + draw
             glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, None)
 
         glBindVertexArray(0)
         self.program.release()
+
+    def stop(self):
+        pass
+
+    def closeEvent(self, event):
+        self.sig_stop.emit()
+        super().closeEvent(event)
+
+
+    def destroy(self, /, destroyWindow = ..., destroySubWindows = ...):
+        self.sig_stop.emit()
+        return super().destroy(destroyWindow, destroySubWindows)
 
 
