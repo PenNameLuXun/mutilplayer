@@ -1,9 +1,9 @@
 import sys,time
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QSlider, QLabel, QApplication,QFrame)
+                             QPushButton, QSlider, QLabel, QApplication,QFrame,QMenu)
 from PySide6.QtCore import Qt, Signal,QTimer,QPoint
 
-from PySide6.QtGui import QCursor,QKeyEvent
+from PySide6.QtGui import QCursor,QKeyEvent,QMouseEvent
 
 from .video_panel import VideoPanel  # 确保路径正确
 
@@ -13,6 +13,7 @@ from .little_widgets import SpeedMenu,VolumeMenu
 # 这里通过一个包装类将它们组合起来
 
 class VideoPlayer(QWidget):
+    request_fullwindow = Signal(object,int)  # 把自己传出去
     request_fullscreen = Signal(object,int)  # 把自己传出去
     def __init__(self, path, config, hwaccel=None,parent=None,flag = 0):
         super().__init__(parent)
@@ -87,17 +88,14 @@ class VideoPlayer(QWidget):
         self.vol_btn.setFixedSize(30, 30)
 
 
-        self.max_btn = QPushButton("FULL1",self)
-        self.max_btn.setCheckable(True)
-        self.max_btn.toggled.connect(self.on_fullscreen_toggled)
+        self.max_btn = QPushButton(self.auto_full_window_text(),self)
+        self.max_btn.clicked.connect(self.auto_switch_full_window)
         self.max_btn.setFixedSize(30, 30)
 
-        self.max_btn1 = QPushButton("FULL2",self)
-        self.max_btn1.setCheckable(True)
-        self.max_btn1.toggled.connect(self.on_fullscreen_toggled)
+        self.max_btn1 = QPushButton(self.auto_full_screen_text(),self)
+        self.max_btn1.clicked.connect(self.auto_switch_full_screen)
         self.max_btn1.setFixedSize(30, 30)
 
-        self.max_btn1.hide()
 
         # 初始化弹出组件
         self.speed_menu = SpeedMenu(self.speed_btn, self.on_speed_change)
@@ -127,12 +125,24 @@ class VideoPlayer(QWidget):
     # 核心控制逻辑
     # ==========================================================
 
-    def on_fullscreen_toggled(self,b):
-        self.request_fullscreen.emit(self,self.full_mask())
+    
+    def auto_switch_full_window(self):
+        self.request_fullwindow.emit(self,not self.parent_window_is_full())
 
+    def auto_switch_full_screen(self):
+        self.request_fullscreen.emit(self,not self.parent_screen_is_full())
 
-    def full_mask(self):
-        return self.max_btn.isChecked() | (self.max_btn1.isChecked() << 1)
+    def auto_full_window_text(self):
+        return "全窗" if not self.parent_window_is_full() else "还原"
+    
+    def auto_full_screen_text(self):
+        return "全屏" if not self.parent_screen_is_full() else "还原"
+
+    def parent_window_is_full(self):
+        return self.parentWidget().full_window
+    
+    def parent_screen_is_full(self):
+        return self.parentWidget().full_screen
 
 
     def update_ui_state(self):
@@ -231,6 +241,9 @@ class VideoPlayer(QWidget):
                 margin: -5px 0;
                 border-radius: 6px;
             }
+            QMenu{
+                color:rgb(44,48,50);    
+            }
         """)
 
     def resizeEvent(self, event):
@@ -239,9 +252,20 @@ class VideoPlayer(QWidget):
         # 将控制栏放在底部居中，左右留间距
         bar_width = self.width() - 40
         bar_height = 30
+
+        self.max_btn.setText(self.auto_full_window_text())
+        self.max_btn1.setText(self.auto_full_screen_text())
         self.control_widget.setGeometry(20, self.height() - bar_height - 20, bar_width, bar_height)
 
     # ================= 交互逻辑 =================
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        menu.addAction(self.auto_full_window_text(), lambda: self.auto_switch_full_window())
+        menu.addAction(self.auto_full_screen_text(), lambda: self.auto_switch_full_screen())
+        menu.exec(event.globalPos())
+
+    
 
     def enterEvent(self, event):
         """鼠标进入显示控制栏"""

@@ -123,6 +123,8 @@ def main():
             player.show()
             players.append(player)
 
+        break
+
 
 
     # 5. 运行并清理
