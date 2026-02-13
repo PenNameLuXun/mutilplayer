@@ -144,7 +144,8 @@ class FramelessDraggableWindow(QWidget):
         if bottom:
             return True, HTBOTTOM
 
-        return True, HTCLIENT
+        #return True, HTCLIENT
+        return super().nativeEvent(eventType, message)
     
     def drag_test(self,pos):
         pass

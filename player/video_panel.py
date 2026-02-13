@@ -32,6 +32,8 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         print("self.cfg:",self.cfg,hasattr(self.cfg,"play_sections"))
         self.decoder = VideoDecoder(path, hwaccel)
         self.paused = False
+        self.pause_time = None
+        self.total_paused_duration = 0.0
 
         self._frame = None
         self._lock = threading.Lock()
@@ -150,8 +152,16 @@ class VideoPanel(QOpenGLWidget, QOpenGLExtraFunctions):
         
         while self.running:
             if self.paused:
+                if self.pause_time is None:
+                    self.pause_time = time.perf_counter()
                 time.sleep(0.01)
                 continue
+            else:
+                # 如果刚刚从暂停恢复
+                if self.pause_time is not None:
+                    paused_duration = time.perf_counter() - self.pause_time
+                    self.start_time += paused_duration
+                    self.pause_time = None
 
             try:
                 # 查看队列里的下一帧，但不取出

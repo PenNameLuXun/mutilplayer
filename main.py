@@ -115,15 +115,13 @@ def main():
             idx = int(sid)
             if idx < 0 or idx >= len(monitors):
                 print(f"[WARN] Screen index {idx} not available, skip.")
-                #continue
+                continue
                 idx = max_id
             max_id = idx
 
             player = ScreenPlayer(monitors[idx], files, cfg.get("hwaccel"),flag)
             player.show()
             players.append(player)
-
-        break
 
 
 
