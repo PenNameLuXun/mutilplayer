@@ -303,6 +303,9 @@ class ScreenPlayer(FramelessDraggableWindow):
                     return False
             return True
         return False  
+    
+    def resize_margin(self):
+        return self.layout.contentsMargins().top()
 
 
 

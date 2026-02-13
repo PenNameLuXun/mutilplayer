@@ -117,7 +117,7 @@ class FramelessDraggableWindow(QWidget):
 
         w = self.width()
         h = self.height()
-        m = int(RESIZE_BORDER * self.devicePixelRatioF())
+        m = self.resize_margin()
 
         left   = pos.x() <= m
         right  = pos.x() >= w - m
@@ -149,3 +149,6 @@ class FramelessDraggableWindow(QWidget):
     
     def drag_test(self,pos):
         pass
+
+    def resize_margin(self):
+        return int(RESIZE_BORDER * self.devicePixelRatioF())
